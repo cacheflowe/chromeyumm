@@ -1,0 +1,40 @@
+{
+  "_comment": "display-config.json — window layout for installation-browser",
+
+  "virtualCanvas": {
+    "_comment": "Total virtual canvas size in virtual pixels.",
+    "width": 1920,
+    "height": 1920
+  },
+
+  "windows": [
+    {
+      "_comment": "window = where it appears on screen (OS logical pixels). source = which region of the virtual canvas this window samples (virtual pixels).",
+      "label": "Top display",
+      "slot": 0,
+      "window": { "x": 0, "y": 0, "width": 1920, "height": 1920 },
+      "source": { "x": 0, "y": 0, "width": 1920, "height": 1920 }
+    }
+  ],
+
+  "fullscreen": false,
+  "alwaysOnTop": true,
+
+  "_contentUrl_options": "null = bundled canvas-2d stage | views://threejs/index.html = Three.js | http://localhost:5173 = external dev server",
+  "contentUrl_": "views://spout-demo/index.html",
+  "contentUrl__": "views://spout-video/index.html",
+  "contentUrl_++_": "views://threejs/index.html",
+  "contentUrl": "views://r3f/index.html",
+  "contentUrl___": "https://localhost:8002/demo/#three-scene-fbo-background",
+  "contentUrl____": "https://localhost:8002/demo/#three-scene-billboard-particles",
+
+  "_spoutOutput_comment": "Spout output — GPU texture sharing (Windows only). Requires SpoutLibrary.dll + SpoutLibrary.h in package/src/native/win/vendor/spout/ and a full rebuild.",
+  "spoutOutput_DISABLED": {
+    "senderName": "chromeyumm_spout_output"
+  },
+
+  "_spoutInput_comment": "Spout input receiver (Windows only). Frames are delivered to the browser via Win32 named shared memory.",
+  "spoutInput_DISABLED": {
+    "senderName": "TD_Spout_Sender"
+  }
+}

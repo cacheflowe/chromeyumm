@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+src/views/*/node_modules/
+
+# Build output
+dist/
+build/
+
+# Vendor binaries (large — supply separately, see native/README.md)
+native/vendor/
+native/build/
+
+# Root-level shared/ junction (recreated by setup, not committed — see native/README.md)
+/shared/
+
+# Bun
+bun.lockb
+
+# OS
+.DS_Store
+Thumbs.db

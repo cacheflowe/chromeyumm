@@ -1,0 +1,20 @@
+{
+  "name": "chromeyumm",
+  "version": "0.1.0",
+  "description": "Minimal Windows CEF browser with D3D output, Spout I/O, and multi-display support",
+  "scripts": {
+    "build": "bun build.ts",
+    "dev": "bun build.ts --dev",
+    "start": "bun run dist/app.js"
+  },
+  "dependencies": {
+    "@types/three": "^0.183.1",
+    "stats.js": "^0.17.0",
+    "three": "^0.183.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/stats.js": "^0.17.4",
+    "typescript": "^5.9.3"
+  }
+}

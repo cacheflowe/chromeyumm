@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Spout Video Demo</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; overflow: auto;
+      background: #111;
+      display: flex; align-items: center; justify-content: center;
+    }
+    spout-video {
+      flex-shrink: 0;
+      /* size is set dynamically from spout-connect — starts at 0 */
+    }
+  </style>
+</head>
+<body>
+  <spout-video></spout-video>
+  <debug-panel></debug-panel>
+  <script type="module" src="index.js"></script>
+</body>
+</html>
