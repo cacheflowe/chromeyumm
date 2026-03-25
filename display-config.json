@@ -24,7 +24,8 @@
   "contentUrl_": "views://spout-demo/index.html",
   "contentUrl__": "views://spout-video/index.html",
   "contentUrl_++_": "views://threejs/index.html",
-  "contentUrl": "views://r3f/index.html",
+  "contentUrl": "views://r3f/dist/index.html",
+  "contentUrl____)__": "https://cacheflowe.com",
   "contentUrl___": "https://localhost:8002/demo/#three-scene-fbo-background",
   "contentUrl____": "https://localhost:8002/demo/#three-scene-billboard-particles",
 

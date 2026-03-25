@@ -116,6 +116,10 @@ This is `nativeWrapper.cpp` from the Electrobun fork, all additions are preserve
 - `DO_NOT_WAIT` inner loop is **critical**: outer loop calling `ReceiveTexture()` again resets seq → texture gone. The retry must be inside the Map loop.
 - Exports: `startSpoutReceiver`, `stopSpoutReceiver`, `getSpoutReceiverSeq`, `spoutReadFrame`
 
+**Event loop bootstrap**
+- `initEventLoop(identifier, name, channel)` — spins `startEventLoop` on a background Win32 thread via `CreateThread` and blocks until `MainThreadDispatcher` is ready (signalled via `g_eventLoopReadyEvent`). Must be called from TypeScript before any window or webview creation. Called at the top of `src/app/index.ts`.
+- `MainThreadDispatcher::dispatch_sync` posts a `WM_APP` message to the message window and blocks on a `std::future` until the main thread executes the lambda. This is why all window/webview creation uses `dispatch_sync` — they must run on the message-loop thread.
+
 **ANGLE backend**
 - Always `use-angle=d3d11` — required for OSR `shared_texture_enabled=1`. VIZ OOM crash occurs with `gl` or `vulkan` in OSR mode.
 - `disable-features=VizDisplayCompositor` was **removed** — crashes GPU process in CEF 145+.
@@ -143,10 +147,11 @@ CEF renderer process helper — runs in `bun Helper (Renderer).exe`.
 
 At startup, `setGpuPreference()` writes `GpuPreference=2` to `HKCU\Software\Microsoft\DirectX\UserGpuPreferences` for all 6 CEF helper executables. Takes effect on the **next launch** — restart once after first run.
 
-Helper exe names (based on the Bun runtime host):
-- `bun.exe`, `bun Helper.exe`, `bun Helper (GPU).exe`, `bun Helper (Renderer).exe`, `bun Helper (Alerts).exe`, `bun Helper (Plugin).exe`
+Helper exe names — chromeyumm uses its own compiled binary so only two helpers matter:
+- `chromeyumm.exe` (the host, also needs the preference)
+- `chromeyumm Helper.exe` (the CEF subprocess)
 
-If the host binary is renamed, update `helperNames` in `src/app/index.ts`.
+`helperNames` in `src/app/index.ts` derives these dynamically from `process.execPath` so renames are handled automatically.
 
 ### `in-process-gpu` requirement
 
@@ -183,10 +188,10 @@ For GPU-direct research findings (why `EGL_ANGLE_d3d_texture_client_buffer` does
 
 | Command | What happens |
 |---|---|
-| `bun build.ts` | Compile C++ DLL + bundle TS + copy CEF runtime to `dist/` |
-| `bun build.ts --skip-native` | TS bundle only (no MSVC) — fast, for TS-only changes |
+| `bun build.ts` | Compile C++ DLL + bundle TS + compile `chromeyumm.exe` + copy CEF runtime to `dist/` |
+| `bun build.ts --skip-native` | TS bundle + exe compile only (no MSVC) — fast, for TS-only changes |
 | `bun build.ts --dev` | Same as above but no minification, inline sourcemaps |
-| `cd dist && bun app.js` | Run the app |
+| `bun start` | `cd dist && ./chromeyumm.exe` |
 
 ### What requires a full rebuild
 
@@ -243,6 +248,7 @@ C++ calls `eventBridgeCallback` (a `JSCallback`) with `{id: "webviewEvent", payl
 - GPU process crash at ~30s without `in-process-gpu: true` — already set in `display-config.json`'s chromium flags (via `electrobun.config.ts` originally; now hardcoded in the build config / chromium_flags.h)
 - Ctrl+D / debug panel only works when the loaded page includes `debug-panel.js` and registers `window.__ebPanelToggle`. Remote HTTPS pages don't have it — the shortcut fires but the JS function is undefined (silent no-op in browser, logged in console)
 - `disable-features=VizDisplayCompositor` removed — caused GPU crash in CEF 145+. Do not add it back.
+- **"Black window" diagnosis**: in OSR mode, the master HWND is always black — CEF doesn't paint to it. Content only exists in the `OnAcceleratedPaint` shared texture. To verify the pipeline vs. the content, do a staging-texture pixel readback on the first frame: alpha=0 → unrendered, alpha=FF + black RGB → CEF rendered but the page content is black (e.g., CSS `background:#000` with failed JS load). Use `views://r3f/dist/index.html` not `views://r3f/index.html` — the latter requires a Vite dev server for `/src/main.tsx`.
 
 ---
 
@@ -273,4 +279,4 @@ The CEF C++ API surface we use is very stable. Breaking changes are documented i
 - **Strip `cef-wrapper.cpp`** — remove WebView2 fallback path (~800 lines), ASAR reading (~200 lines), WGPU shims (~400 lines, already `#ifdef`'d), update/packaging machinery (~300 lines). Establish clean baseline first, strip section by section with a build test after each.
 - **GitHub releases** — write `scripts/release.ts` to tag, package, and push versioned releases (replaces `installation-browser/scripts/release.ts`)
 - **Consolidated debug panel** — single Ctrl+D panel with fps, draw calls, canvas size, mouse coords, Spout status, mode info, key reference. Replaces scattered `debugEl` + stats.js + slot overlay.
-- **Rename helper processes** — once Bun adds support for custom subprocess names, update from `bun Helper (GPU).exe` to `chromeyumm Helper (GPU).exe` and update `helperNames` in `src/app/index.ts`.
+- **Rename helper processes** — once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).exe` and friends to `helperNames` in `src/app/index.ts` for the GPU-preference registry writes. Currently only `chromeyumm.exe` and `chromeyumm Helper.exe` are registered.

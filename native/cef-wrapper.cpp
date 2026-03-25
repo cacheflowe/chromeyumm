@@ -16,7 +16,7 @@
 #include <future>
 #include <memory>
 #include <windows.h>
-#include "../shared/pending_resize_queue.h"
+#include "shared/pending_resize_queue.h"
 #ifdef ELECTROBUN_HAS_WGPU
 #include "dawn/webgpu.h"
 #endif
@@ -46,22 +46,22 @@
 #include <dwmapi.h>    // For DWM thumbnail (NativeDisplayWindow)
 
 // Shared cross-platform utilities
-#include "../shared/glob_match.h"
-#include "../shared/callbacks.h"
-#include "../shared/permissions.h"
-#include "../shared/mime_types.h"
-#include "../shared/config.h"
-#include "../shared/preload_script.h"
-#include "../shared/webview_storage.h"
-#include "../shared/navigation_rules.h"
-#include "../shared/thread_safe_map.h"
-#include "../shared/shutdown_guard.h"
-#include "../shared/ffi_helpers.h"
-#include "../shared/json_menu_parser.h"
-#include "../shared/download_event.h"
-#include "../shared/app_paths.h"
-#include "../shared/accelerator_parser.h"
-#include "../shared/chromium_flags.h"
+#include "shared/glob_match.h"
+#include "shared/callbacks.h"
+#include "shared/permissions.h"
+#include "shared/mime_types.h"
+#include "shared/config.h"
+#include "shared/preload_script.h"
+#include "shared/webview_storage.h"
+#include "shared/navigation_rules.h"
+#include "shared/thread_safe_map.h"
+#include "shared/shutdown_guard.h"
+#include "shared/ffi_helpers.h"
+#include "shared/json_menu_parser.h"
+#include "shared/download_event.h"
+#include "shared/app_paths.h"
+#include "shared/accelerator_parser.h"
+#include "shared/chromium_flags.h"
 
 using namespace electrobun;
 
@@ -746,6 +746,7 @@ static QuitRequestedHandler g_quitRequestedHandler = nullptr;
 static std::atomic<bool> g_shutdownComplete{false};
 static std::atomic<bool> g_eventLoopStopping{false};
 static DWORD g_mainThreadId = 0;
+static HANDLE g_eventLoopReadyEvent = NULL;
 
 // Simple CEF App class for minimal implementation
 // Hidden window message for CEF external message pump scheduling
@@ -2652,9 +2653,74 @@ void ElectrobunRenderHandler::OnAcceleratedPaint(
             static bool s_loggedFirstBlit = false;
             if (!s_loggedFirstBlit) {
                 s_loggedFirstBlit = true;
+                // Log source texture format (DXGI_FORMAT enum value).
+                // BGRA=87, RGBA=28, BGRA_SRGB=91, RGBA_SRGB=29
+                // Swap chain is always BGRA=87; mismatch causes silent black output.
+                ID3D11Texture2D* firstBack = nullptr;
+                DXGI_FORMAT backFmt = DXGI_FORMAT_UNKNOWN;
+                if (!itD3D->second.slots.empty() && itD3D->second.slots[0].swapChain) {
+                    if (SUCCEEDED(itD3D->second.slots[0].swapChain->GetBuffer(
+                            0, __uuidof(ID3D11Texture2D), (void**)&firstBack))) {
+                        D3D11_TEXTURE2D_DESC backDesc = {};
+                        firstBack->GetDesc(&backDesc);
+                        backFmt = backDesc.Format;
+                        firstBack->Release();
+                    }
+                }
                 ::log("D3DOutput: first frame — source texture " +
                       std::to_string(texW) + "x" + std::to_string(texH) +
+                      " fmt=" + std::to_string(srcDesc.Format) +
+                      ", backbuf fmt=" + std::to_string(backFmt) +
                       ", " + std::to_string(itD3D->second.slots.size()) + " slot(s)");
+
+                // Pixel readback: copy 1×1 pixel from center of sharedTex to a staging
+                // texture and map it to confirm CEF is rendering actual content.
+                // If all samples are 0x00000000 the source texture is genuinely black.
+                {
+                    D3D11_TEXTURE2D_DESC stagDesc = {};
+                    stagDesc.Width  = 1;
+                    stagDesc.Height = 1;
+                    stagDesc.MipLevels = 1;
+                    stagDesc.ArraySize = 1;
+                    stagDesc.Format = srcDesc.Format;
+                    stagDesc.SampleDesc.Count = 1;
+                    stagDesc.Usage = D3D11_USAGE_STAGING;
+                    stagDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+                    ID3D11Texture2D* stagTex = nullptr;
+                    HRESULT hrStag = state.d3dDevice->CreateTexture2D(&stagDesc, nullptr, &stagTex);
+                    if (SUCCEEDED(hrStag) && stagTex) {
+                        // Sample centre pixel
+                        UINT cx = texW / 2, cy = texH / 2;
+                        D3D11_BOX sBox = { cx, cy, 0, cx + 1, cy + 1, 1 };
+                        state.d3dContext->CopySubresourceRegion(stagTex, 0, 0, 0, 0, sharedTex, 0, &sBox);
+                        D3D11_MAPPED_SUBRESOURCE mapped = {};
+                        if (SUCCEEDED(state.d3dContext->Map(stagTex, 0, D3D11_MAP_READ, 0, &mapped))) {
+                            uint32_t px = *reinterpret_cast<uint32_t*>(mapped.pData);
+                            state.d3dContext->Unmap(stagTex, 0);
+                            char buf[32];
+                            sprintf_s(buf, "%08X", px);
+                            ::log("D3DOutput: centre pixel (BGRA) = 0x" + std::string(buf) +
+                                  " (0=black/empty, non-zero=has content)");
+                        } else {
+                            ::log("D3DOutput: staging Map failed — cross-adapter or device mismatch?");
+                        }
+                        stagTex->Release();
+                    } else {
+                        char buf[16]; sprintf_s(buf, "%08X", (UINT)hrStag);
+                        ::log("D3DOutput: staging texture create failed hr=0x" + std::string(buf));
+                    }
+                }
+            }
+
+            static bool s_loggedSlots = false;
+            if (!s_loggedSlots) {
+                s_loggedSlots = true;
+                for (auto& dbgSlot : itD3D->second.slots) {
+                    ::log("D3DOutput: slot displayWindowId=" + std::to_string(dbgSlot.displayWindowId) +
+                          " src=(" + std::to_string(dbgSlot.sourceX) + "," + std::to_string(dbgSlot.sourceY) +
+                          " " + std::to_string(dbgSlot.sourceW) + "x" + std::to_string(dbgSlot.sourceH) +
+                          ") swapChain=" + (dbgSlot.swapChain ? "ok" : "null"));
+                }
             }
 
             for (auto& slot : itD3D->second.slots) {
@@ -6243,12 +6309,22 @@ ELECTROBUN_EXPORT bool initCEF() {
     g_remoteDebugPort = selectedPort;
     settings.remote_debugging_port = selectedPort;
 
-    // Set the subprocess path to the helper executable
-    CefString(&settings.browser_subprocess_path) = std::string(exePath) + "\\bun Helper.exe";
-    
-    // Set paths - icudtl.dat and .pak files are in cef directory root
-    CefString(&settings.resources_dir_path) = cefResourceDir;
-    CefString(&settings.locales_dir_path) = cefResourceDir + "\\Resources\\locales";
+    // Set the subprocess path to the helper executable (name derived from running exe)
+    {
+        char exeNameBuf[MAX_PATH];
+        GetModuleFileNameA(NULL, exeNameBuf, MAX_PATH);
+        std::string helperName = "chromeyumm Helper.exe"; // fallback
+        if (char* sl = strrchr(exeNameBuf, '\\')) {
+            std::string file = sl + 1;
+            std::string stem = file.size() > 4 ? file.substr(0, file.size() - 4) : file;
+            helperName = stem + " Helper.exe";
+        }
+        CefString(&settings.browser_subprocess_path) = std::string(exePath) + "\\" + helperName;
+    }
+
+    // Set paths — pak files and icudtl.dat are in the exe directory; locales/ is a subdir
+    CefString(&settings.resources_dir_path) = std::string(exePath);
+    CefString(&settings.locales_dir_path) = std::string(exePath) + "\\locales";
     CefString(&settings.cache_path) = userDataDir;
     
     // Add language settings like macOS
@@ -7412,7 +7488,10 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
     
     // Initialize the dispatcher
     MainThreadDispatcher::initialize(messageWindow);
-    
+
+    // Signal initEventLoop() that the message window + dispatcher are ready
+    if (g_eventLoopReadyEvent) SetEvent(g_eventLoopReadyEvent);
+
     // Initialize CEF if available
     if (isCEFAvailable()) {
         if (initCEF()) {
@@ -7493,6 +7572,31 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
     }
 }
 
+
+// Starts the Windows message loop + CEF on a background thread.
+// Blocks until the message window + dispatcher are ready, then returns.
+// Must be called before any window/webview creation (dispatch_sync).
+static DWORD WINAPI EventLoopThreadProc(LPVOID) {
+    startEventLoop(
+        g_electrobunIdentifier.c_str(),
+        g_electrobunName.c_str(),
+        g_electrobunChannel.c_str()
+    );
+    return 0;
+}
+
+ELECTROBUN_EXPORT void initEventLoop(const char* identifier, const char* name, const char* channel) {
+    if (identifier && identifier[0]) g_electrobunIdentifier = std::string(identifier);
+    if (name      && name[0])       g_electrobunName       = std::string(name);
+    if (channel   && channel[0])    g_electrobunChannel    = std::string(channel);
+
+    g_eventLoopReadyEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+    CreateThread(NULL, 0, EventLoopThreadProc, NULL, 0, NULL);
+    // Block until startEventLoop has set up the message window + dispatcher
+    WaitForSingleObject(g_eventLoopReadyEvent, 10000);
+    CloseHandle(g_eventLoopReadyEvent);
+    g_eventLoopReadyEvent = NULL;
+}
 
 ELECTROBUN_EXPORT void stopEventLoop() {
     if (g_eventLoopStopping.exchange(true)) {
@@ -9202,6 +9306,20 @@ ELECTROBUN_EXPORT void hideWindow(void *window) {
     if (!IsWindow(hwnd)) return;
     MainThreadDispatcher::dispatch_sync([=]() {
         ShowWindow(hwnd, SW_HIDE);
+        // Re-assert WasHidden(false) for any OSR browser whose host HWND this is,
+        // so CEF keeps delivering OnAcceleratedPaint after the window is hidden.
+        for (auto& kv : g_spoutWindows) {
+            if (kv.second.hwnd == hwnd && kv.second.active) {
+                for (auto& bkv : browserToWebviewMap) {
+                    if (bkv.second == kv.first) {
+                        auto bIt = g_cefBrowsers.find(bkv.first);
+                        if (bIt != g_cefBrowsers.end() && bIt->second)
+                            bIt->second->GetHost()->WasHidden(false);
+                        break;
+                    }
+                }
+            }
+        }
     });
 }
 
@@ -9766,6 +9884,18 @@ ELECTROBUN_EXPORT bool startD3DOutput(uint32_t webviewId) {
     // Mark active — OnAcceleratedPaint will now open sharedTex and execute the D3D output block.
     // state.sender is null, so SendTexture is skipped.
     state.active = true;
+
+    // Tell CEF to keep rendering even when the host HWND is hidden.
+    // Without this, ShowWindow(SW_HIDE) on the master HWND causes CEF's compositor
+    // to pause OnAcceleratedPaint delivery.
+    for (auto& kv : browserToWebviewMap) {
+        if (kv.second == webviewId) {
+            auto bIt = g_cefBrowsers.find(kv.first);
+            if (bIt != g_cefBrowsers.end() && bIt->second)
+                bIt->second->GetHost()->WasHidden(false);
+            break;
+        }
+    }
 
     // Log which GPU was selected.
     IDXGIDevice* dxgiDev = nullptr;
@@ -11729,8 +11859,9 @@ std::string loadViewsFile(const std::string& path) {
         }
     }
 
-    // Fallback: Read from flat file system (for non-ASAR builds or missing files)
-    std::string fullPath = resourcesDir + "\\app\\views\\" + path;
+    // Fallback: Read from flat file system.
+    // Views are at <cwd>\views\  (i.e. dist\views\ when run from dist\)
+    std::string fullPath = std::string(currentDir) + "\\views\\" + path;
 
     ::log("DEBUG loadViewsFile: Attempting flat file read: " + fullPath);
 

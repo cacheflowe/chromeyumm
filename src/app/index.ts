@@ -1,7 +1,14 @@
 import { BrowserWindow, NativeDisplayWindow, Screen, GlobalShortcut } from "chromeyumm";
-import { dirname, join } from "path";
+import { dirname, join, basename } from "path";
 import { loadDisplayConfig, resolveVirtualCanvas } from "./config.ts";
 import { SpoutInput } from "./spout-input.ts";
+import { native, cs } from "../chromeyumm/ffi.ts";
+
+// ---------------------------------------------------------------------------
+// Start the Windows message loop + CEF on a background thread.
+// Must happen before any window/webview creation (which use dispatch_sync).
+// ---------------------------------------------------------------------------
+native.symbols.initEventLoop(cs("chromeyumm"), cs("Chromeyumm"), cs("stable"));
 
 // ---------------------------------------------------------------------------
 // GPU preference — ensure CEF helper processes use the high-performance GPU.
@@ -11,13 +18,10 @@ import { SpoutInput } from "./spout-input.ts";
 (function setGpuPreference() {
 	const regKey = "HKCU\\Software\\Microsoft\\DirectX\\UserGpuPreferences";
 	const binDir = dirname(process.execPath);
+	const exeStem = basename(process.execPath, ".exe"); // "chromeyumm" or "bun"
 	const helperNames = [
-		"bun.exe",
-		"bun Helper.exe",
-		"bun Helper (GPU).exe",
-		"bun Helper (Renderer).exe",
-		"bun Helper (Alerts).exe",
-		"bun Helper (Plugin).exe",
+		basename(process.execPath),           // e.g. "chromeyumm.exe" or "bun.exe"
+		`${exeStem} Helper.exe`,              // e.g. "chromeyumm Helper.exe"
 	];
 	for (const name of helperNames) {
 		const exe = join(binDir, name);
@@ -317,3 +321,7 @@ GlobalShortcut.register("Escape", () => {
 	if (spoutInput) spoutInput.stop();
 	process.exit(0);
 });
+
+// Keep Bun's event loop alive so CEF callbacks (dom-ready, shortcuts, etc.) can fire.
+// Without this, Bun exits as soon as top-level JS finishes.
+setInterval(() => {}, 1 << 30);

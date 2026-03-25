@@ -92,9 +92,12 @@ async function buildNative() {
   const wgpuIncDir = join(NATIVE_DIR, "vendor", "wgpu", "win-x64", "include");
   const wgpuFlag   = existsSync(wgpuIncDir) ? `/I"${wgpuIncDir}" /DELECTROBUN_HAS_WGPU` : "";
 
-  const obj = join(NATIVE_DIR, "build", "cef-wrapper.obj");
-  const dll = join(NATIVE_DIR, "build", "libNativeWrapper.dll");
+  const obj        = join(NATIVE_DIR, "build", "cef-wrapper.obj");
+  const dll        = join(NATIVE_DIR, "build", "libNativeWrapper.dll");
+  const helperObj  = join(NATIVE_DIR, "build", "cef-helper.obj");
+  const helperExe  = join(NATIVE_DIR, "build", "chromeyumm Helper.exe");
 
+  // Compile DLL
   await runMsvc(
     `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
     ` /I"${webview2Inc}" /I"${cefInclude}" ${wgpuFlag}` +
@@ -109,8 +112,47 @@ async function buildNative() {
     ` "${webview2Lib}" "${cefLib}" "${cefWrapper}" /DELAYLOAD:libcef.dll` +
     ` ${spoutArg} "${obj}"`,
   );
-
   console.log(`✓ DLL: ${dll}`);
+
+  // Compile CEF subprocess helper exe
+  console.log("\n── CEF helper exe ──────────────────────────────────────");
+  await runMsvc(
+    `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
+    ` /I"${cefInclude}"` +
+    ` /Fo"${helperObj}" "${join(NATIVE_DIR, "cef-helper.cpp")}"`,
+  );
+  await runMsvc(
+    `link /SUBSYSTEM:WINDOWS /OUT:"${helperExe}"` +
+    ` user32.lib "${cefLib}" "${cefWrapper}" "${helperObj}"`,
+  );
+  console.log(`✓ Helper: ${helperExe}`);
+}
+
+async function compileExe() {
+  console.log("\n── Compile chromeyumm.exe ──────────────────────────────");
+  mkdirSync(DIST_DIR, { recursive: true });
+  const outExe = join(DIST_DIR, "chromeyumm.exe");
+  const result = await Bun.build({
+    entrypoints: [join(ROOT, "src", "app", "index.ts")],
+    outdir: join(ROOT, "_exe_tmp"),
+    target: "bun",
+    naming: "app.js",
+    minify: !isDev,
+    alias: { "chromeyumm": join(ROOT, "src", "chromeyumm", "index.ts") },
+  });
+  if (!result.success) {
+    for (const msg of result.logs) console.error(msg);
+    throw new Error("Exe bundle step failed");
+  }
+  const bundled = join(ROOT, "_exe_tmp", "app.js");
+  const compile = await $`bun build --compile --outfile="${outExe}" "${bundled}"`.quiet();
+  if (compile.exitCode !== 0) {
+    console.error(compile.stderr.toString());
+    throw new Error("bun build --compile failed");
+  }
+  // Clean up temp bundle
+  await $`rm -rf "${join(ROOT, "_exe_tmp")}"`.catch(() => {});
+  console.log(`✓ Exe: ${outExe}`);
 }
 
 async function bundleTs() {
@@ -149,10 +191,12 @@ async function copyRuntime() {
   console.log("\n── Copy CEF runtime ────────────────────────────────────");
   mkdirSync(DIST_DIR, { recursive: true });
 
-  // Copy built DLL
-  const builtDll = join(NATIVE_DIR, "build", "libNativeWrapper.dll");
-  if (!skipNative && existsSync(builtDll)) {
-    copyFileSync(builtDll, join(DIST_DIR, "libNativeWrapper.dll"));
+  // Copy built DLL + helper exe
+  const builtDll    = join(NATIVE_DIR, "build", "libNativeWrapper.dll");
+  const builtHelper = join(NATIVE_DIR, "build", "chromeyumm Helper.exe");
+  if (!skipNative) {
+    if (existsSync(builtDll))    copyFileSync(builtDll,    join(DIST_DIR, "libNativeWrapper.dll"));
+    if (existsSync(builtHelper)) copyFileSync(builtHelper, join(DIST_DIR, "chromeyumm Helper.exe"));
   }
 
   // Copy CEF Release binaries
@@ -194,6 +238,7 @@ console.log("─".repeat(50));
 
 await buildNative();
 await bundleTs();
+await compileExe();
 await copyRuntime();
 
 console.log("\n✓ Build complete →", DIST_DIR);

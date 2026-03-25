@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(bun build.ts --dev)",
+      "Bash(bun build.ts --dev --skip-native)",
+      "Bash(bun build.ts --skip-native --dev)"
+    ]
+  }
+}

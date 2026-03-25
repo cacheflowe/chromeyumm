@@ -7,12 +7,16 @@
  */
 
 import { dlopen, FFIType, JSCallback, CString, type Pointer } from "bun:ffi";
-import { join } from "path";
+import { join, dirname } from "path";
+import { existsSync } from "fs";
 
 // ── DLL load ────────────────────────────────────────────────────────────────
 
 export const native = (() => {
-  const dllPath = join(process.cwd(), "libNativeWrapper.dll");
+  // When running as a compiled exe, look next to the exe first; fall back to cwd
+  // (cwd works for `bun app.js` run from dist/).
+  const nextToExe = join(dirname(process.execPath), "libNativeWrapper.dll");
+  const dllPath = existsSync(nextToExe) ? nextToExe : join(process.cwd(), "libNativeWrapper.dll");
   try {
     return dlopen(dllPath, {
       // ── Window ──────────────────────────────────────────────────────────
@@ -118,6 +122,11 @@ export const native = (() => {
       registerGlobalShortcut:    { args: [FFIType.cstring], returns: FFIType.bool },
       unregisterGlobalShortcut:  { args: [FFIType.cstring], returns: FFIType.bool },
       unregisterAllGlobalShortcuts: { args: [], returns: FFIType.void },
+
+      // ── Event loop ──────────────────────────────────────────────────────
+      // Starts the Windows message loop + CEF on a background thread.
+      // Must be called before any window/webview creation.
+      initEventLoop: { args: [FFIType.cstring, FFIType.cstring, FFIType.cstring], returns: FFIType.void },
 
       // ── Screen ───────────────────────────────────────────────────────────
       getAllDisplays: { args: [], returns: FFIType.cstring },
