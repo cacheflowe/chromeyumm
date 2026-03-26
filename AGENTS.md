@@ -11,6 +11,7 @@ bun build.ts              # full build (C++ DLL + TS + CEF runtime)
 bun build.ts --skip-native  # TS-only rebuild
 bun build.ts --dev        # dev build (no minification)
 dist/chromeyumm.exe       # run (from project root)
+bun scripts/release.ts    # package release zip
 ```
 
 ## Key Directories
@@ -26,6 +27,8 @@ dist/chromeyumm.exe       # run (from project root)
 | `src/components/` | Reusable web components (debug panel, slot overlay, Spout receiver) |
 | `src/views/` | Example views (Three.js, R3F, Spout demos) — served via dev servers, not bundled |
 | `build.ts` | Build script (replaces Electrobun CLI) |
+| `scripts/release.ts` | Release packaging — version bump, zip, GitHub publish |
+| `.github/workflows/release.yml` | CI: build + release on `v*` tag push |
 | `display-config.json` | Display layout, canvas size, content URL, Spout settings |
 
 ## Environment

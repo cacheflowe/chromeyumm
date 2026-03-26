@@ -191,13 +191,13 @@ async function bundleTs() {
   console.log(`✓ Bundle: ${join(DIST_DIR, "app.js")}`);
 }
 
-function copyDir(src: string, dest: string) {
+function copyDir(src: string, dest: string, filter?: (name: string) => boolean) {
   mkdirSync(dest, { recursive: true });
   for (const entry of readdirSync(src)) {
     const srcPath = join(src, entry);
     const destPath = join(dest, entry);
-    if (statSync(srcPath).isDirectory()) copyDir(srcPath, destPath);
-    else copyFileSync(srcPath, destPath);
+    if (statSync(srcPath).isDirectory()) copyDir(srcPath, destPath, filter);
+    else if (!filter || filter(entry)) copyFileSync(srcPath, destPath);
   }
 }
 
@@ -223,11 +223,18 @@ async function copyRuntime() {
     console.log(`✓ CEF runtime files copied from ${cefRelease}`);
   }
 
-  // Copy CEF Resources
+  // Copy CEF Resources (only en-US locale — no multilanguage support)
   const cefResources = join(NATIVE_DIR, "vendor", "cef", "Resources");
   if (existsSync(cefResources)) {
-    copyDir(cefResources, DIST_DIR);
-    console.log(`✓ CEF resources copied`);
+    copyDir(cefResources, DIST_DIR, (name) => {
+      // Keep only en-US locale paks, skip all others
+      if (name.endsWith(".pak") && !name.startsWith("en-US")) {
+        const isLocale = !name.startsWith("chrome_") && !name.startsWith("resources");
+        if (isLocale) return false;
+      }
+      return true;
+    });
+    console.log(`✓ CEF resources copied (en-US locale only)`);
   }
 }
 

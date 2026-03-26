@@ -54,6 +54,18 @@ bun run build    # outputs to src/views/r3f/dist/
 | `dumpbin /exports dist/libNativeWrapper.dll` | Verify DLL export names |
 | Ctrl+D (at runtime) | Toggle debug panel (pages must include debug-panel.js) |
 
+## Release
+
+| Command | Description |
+|---|---|
+| `bun scripts/release.ts` | Build + package `release/chromeyumm-v{VERSION}-win-x64.zip` |
+| `bun scripts/release.ts --skip-build` | Package existing `dist/` without rebuilding |
+| `bun scripts/release.ts --bump patch` | Bump patch version, build, and package |
+| `bun scripts/release.ts --bump minor` | Bump minor version, build, and package |
+| `bun scripts/release.ts --publish` | Build, package, git tag, and create GitHub release (requires `gh` CLI) |
+
+GitHub Actions: push a `v*` tag to trigger `.github/workflows/release.yml` automatically.
+
 ## What Requires Which Build
 
 | Changed | Rebuild needed |

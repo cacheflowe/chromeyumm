@@ -1,0 +1,24 @@
+D:\workspace\chromeyumm\dist\bootstrap.exe
+D:\workspace\chromeyumm\dist\bootstrapc.exe
+D:\workspace\chromeyumm\dist\chromeyumm Helper.exe
+D:\workspace\chromeyumm\dist\chromeyumm.exe
+D:\workspace\chromeyumm\dist\chrome_100_percent.pak
+D:\workspace\chromeyumm\dist\chrome_200_percent.pak
+D:\workspace\chromeyumm\dist\chrome_elf.dll
+D:\workspace\chromeyumm\dist\d3dcompiler_47.dll
+D:\workspace\chromeyumm\dist\dxcompiler.dll
+D:\workspace\chromeyumm\dist\dxil.dll
+D:\workspace\chromeyumm\dist\icudtl.dat
+D:\workspace\chromeyumm\dist\libcef.dll
+D:\workspace\chromeyumm\dist\libEGL.dll
+D:\workspace\chromeyumm\dist\libGLESv2.dll
+D:\workspace\chromeyumm\dist\libNativeWrapper.dll
+D:\workspace\chromeyumm\dist\locales\en-US.pak
+D:\workspace\chromeyumm\dist\locales\en-US_FEMININE.pak
+D:\workspace\chromeyumm\dist\locales\en-US_MASCULINE.pak
+D:\workspace\chromeyumm\dist\locales\en-US_NEUTER.pak
+D:\workspace\chromeyumm\dist\resources.pak
+D:\workspace\chromeyumm\dist\v8_context_snapshot.bin
+D:\workspace\chromeyumm\dist\vk_swiftshader.dll
+D:\workspace\chromeyumm\dist\vk_swiftshader_icd.json
+D:\workspace\chromeyumm\dist\vulkan-1.dll

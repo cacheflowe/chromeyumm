@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version tag (e.g. v0.2.0). Leave empty to use existing tag."
+        required: false
+        type: string
+
+# Cancel in-progress runs for the same ref
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # create releases and upload assets
+
+jobs:
+  build-and-release:
+    name: Build & Package
+    runs-on: windows-latest
+    # Self-hosted runner recommended for faster builds / GPU testing.
+    # Switch to: runs-on: [self-hosted, Windows, X64]
+    # when a self-hosted runner with MSVC is available.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      # Cache vendor downloads (~1.5 GB for CEF)
+      - name: Cache vendors
+        uses: actions/cache@v4
+        with:
+          path: |
+            native/vendor/cef
+            native/vendor/spout
+            _vendor_tmp
+          key: vendors-cef-${{ hashFiles('scripts/setup-vendors.ts') }}
+          restore-keys: vendors-cef-
+
+      - name: Setup vendors
+        run: bun scripts/setup-vendors.ts
+
+      - name: Build
+        run: bun build.ts
+
+      - name: Package release
+        run: bun scripts/release.ts --skip-build
+        # Build already done above — just package the zip
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chromeyumm-win-x64
+          path: release/*.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.zip
+          generate_release_notes: true
