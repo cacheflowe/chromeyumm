@@ -13,7 +13,7 @@ namespace electrobun {
  * @param basePath The base application support/data path (e.g., ~/Library/Application Support)
  * @param identifier The app identifier (e.g., "sh.blackboard.electrobun-kitchen")
  * @param channel The release channel (e.g., "dev", "canary", "stable")
- * @param suffix Optional suffix to append (e.g., "CEF", "WebView2")
+ * @param suffix Optional suffix to append (e.g., "CEF")
  * @param pathSeparator The path separator to use ('/' for Unix, '\\' for Windows)
  * @return The full path: basePath/identifier/channel/suffix
  */
@@ -47,7 +47,7 @@ inline std::string buildAppDataPath(
  * @param basePath The base application support/data path
  * @param identifier The app identifier
  * @param channel The release channel
- * @param renderer The renderer type (e.g., "CEF", "WebView2", "WebKit")
+ * @param renderer The renderer type (e.g., "CEF")
  * @param partitionName The partition name
  * @param pathSeparator The path separator to use
  * @return The full path: basePath/identifier/channel/renderer/Partitions/partitionName

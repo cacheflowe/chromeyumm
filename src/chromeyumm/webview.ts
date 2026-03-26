@@ -4,11 +4,7 @@
  */
 
 import { type Pointer } from "bun:ffi";
-import {
-  native, cs,
-  addWebviewListener,
-  eventBridgeCallback, nullCallback, decideNavCallback,
-} from "./ffi.ts";
+import { native, cs, addWebviewListener, eventBridgeCallback, nullCallback, decideNavCallback } from "./ffi.ts";
 
 let nextId = 1;
 export const webviewRegistry = new Map<number, Webview>();
@@ -17,14 +13,7 @@ export class Webview {
   readonly id: number;
   ptr!: Pointer;
 
-  constructor(
-    windowPtr: Pointer,
-    windowId: number,
-    url: string,
-    width: number,
-    height: number,
-    viewsRoot: string,
-  ) {
+  constructor(windowPtr: Pointer, windowId: number, url: string, width: number, height: number) {
     this.id = nextId++;
     webviewRegistry.set(this.id, this);
 
@@ -42,20 +31,22 @@ export class Webview {
       windowPtr,
       cs("cef"),
       cs(url),
-      0, 0,          // x, y (fills window)
-      width, height,
-      true,          // autoResize
+      0,
+      0, // x, y (fills window)
+      width,
+      height,
+      true, // autoResize
       cs("persist:default"),
       decideNavCallback,
       eventBridgeCallback, // webviewEventHandler slot (reuse eventBridge)
       eventBridgeCallback, // eventBridgeHandler
-      nullCallback,        // bunBridgePostmessageHandler (no RPC)
-      nullCallback,        // internalBridgeHandler (no RPC)
+      nullCallback, // bunBridgePostmessageHandler (no RPC)
+      nullCallback, // internalBridgeHandler (no RPC)
       cs(preload),
-      cs(""),          // customPreloadScript
-      cs(viewsRoot),
-      false,           // transparent
-      false,           // sandbox
+      cs(""), // customPreloadScript
+      cs(""), // viewsRoot (unused)
+      false, // transparent
+      false, // sandbox
     ) as Pointer;
   }
 

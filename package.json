@@ -5,7 +5,7 @@
   "scripts": {
     "build": "bun build.ts",
     "dev": "bun build.ts --dev",
-    "start": "cd dist && ./chromeyumm.exe"
+    "start": "dist/chromeyumm.exe"
   },
   "dependencies": {
     "@types/three": "^0.183.1",

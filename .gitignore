@@ -6,12 +6,15 @@ src/views/*/node_modules/
 dist/
 build/
 
-# Vendor binaries (large — supply separately, see native/README.md)
+# Vendor binaries (large — run `bun scripts/setup-vendors.ts` to install)
 native/vendor/
 native/build/
 
 # Root-level shared/ junction (recreated by setup, not committed — see native/README.md)
 /shared/
+
+# Vendor download cache
+_vendor_tmp/
 
 # Bun
 bun.lockb

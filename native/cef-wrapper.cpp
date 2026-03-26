@@ -46,7 +46,6 @@
 #include "shared/mime_types.h"
 #include "shared/config.h"
 #include "shared/preload_script.h"
-#include "shared/webview_storage.h"
 #include "shared/navigation_rules.h"
 #include "shared/thread_safe_map.h"
 #include "shared/shutdown_guard.h"
@@ -477,7 +476,7 @@ public:
     void OnScheduleMessagePumpWork(int64_t delay_ms) override {
         // Called by CEF when it needs CefDoMessageLoopWork to be called.
         // With external_message_pump=true, CEF does NOT internally pump Windows messages,
-        // preventing it from stealing WebView2 messages.
+        // preventing it from interfering with our Windows message pump.
         if (g_cefPumpWindow) {
             if (delay_ms <= 0) {
                 // Immediate work needed
@@ -492,6 +491,7 @@ public:
     void OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line) override {
         // Windows default flags — can be overridden via chromiumFlags in config
         static const std::vector<electrobun::DefaultFlag> defaults = {
+            {"in-process-gpu", ""},
             {"disable-web-security", ""},
             {"disable-features=VizDisplayCompositor", ""},
             {"remote-allow-origins", "*"},
@@ -501,16 +501,6 @@ public:
 
         // Apply user-defined chromium flags from build.json
         electrobun::applyChromiumFlags(g_userChromiumFlags, command_line);
-    }
-
-    void OnRegisterCustomSchemes(CefRawPtr<CefSchemeRegistrar> registrar) override {
-        // Register views:// scheme
-        registrar->AddCustomScheme("views",
-            CEF_SCHEME_OPTION_STANDARD |
-            CEF_SCHEME_OPTION_CORS_ENABLED |
-            CEF_SCHEME_OPTION_SECURE |
-            CEF_SCHEME_OPTION_CSP_BYPASSING |
-            CEF_SCHEME_OPTION_FETCH_ENABLED);
     }
 
 private:
@@ -692,110 +682,8 @@ static void EnsureDevToolsWindowClassRegistered() {
     });
 }
 
-// Forward declarations for functions defined later in the file
-std::string loadViewsFile(const std::string& path);
+// Forward declaration for MIME type detection
 std::string getMimeTypeForFile(const std::string& path);
-
-// CEF Resource Handler for views:// scheme (based on Mac implementation)
-class ElectrobunSchemeHandler : public CefResourceHandler {
-public:
-    ElectrobunSchemeHandler(uint32_t webviewId)
-        : webviewId_(webviewId), offset_(0), hasResponse_(false) {}
-
-    bool Open(CefRefPtr<CefRequest> request, bool& handle_request, CefRefPtr<CefCallback> callback) override {
-        handle_request = true;
-
-        std::string url = request->GetURL();
-        std::string path = url.substr(8); // Remove "views://" prefix
-        if (path.empty()) path = "index.html";
-
-        // Strip query string and fragment before file lookup.
-        // Without this, "stage/index.html?foo=bar" is treated as a literal
-        // filename, loadViewsFile returns empty, Open returns false, and CEF
-        // reports ERR_UNKNOWN_URL_SCHEME instead of serving the file.
-        size_t queryPos = path.find('?');
-        if (queryPos != std::string::npos) path = path.substr(0, queryPos);
-        size_t fragPos = path.find('#');
-        if (fragPos != std::string::npos) path = path.substr(0, fragPos);
-
-        std::string content;
-        // Check for internal/index.html (inline HTML content)
-        if (path == "internal/index.html") {
-            const char* htmlContent = getWebviewHTMLContent(webviewId_);
-            if (htmlContent && strlen(htmlContent) > 0) {
-                content = std::string(htmlContent);
-                free((void*)htmlContent);
-            } else {
-                content = "<html><body><h1>No content set</h1></body></html>";
-            }
-        } else {
-            content = loadViewsFile(path);
-        }
-        mimeType_ = getMimeTypeForFile(path);
-
-        if (!content.empty()) {
-            responseData_.assign(content.begin(), content.end());
-            hasResponse_ = true;
-        } else {
-            hasResponse_ = false;
-        }
-
-        return hasResponse_;
-    }
-
-    void GetResponseHeaders(CefRefPtr<CefResponse> response, int64_t& response_length, CefString& redirectUrl) override {
-        response->SetStatus(200);
-        response->SetMimeType(mimeType_);
-        response_length = static_cast<int64_t>(responseData_.size());
-    }
-
-    bool Read(void* data_out, int bytes_to_read, int& bytes_read, CefRefPtr<CefResourceReadCallback> callback) override {
-        bytes_read = 0;
-        if (!hasResponse_ || offset_ >= responseData_.size()) {
-            return false;
-        }
-        size_t remaining = responseData_.size() - offset_;
-        bytes_read = (bytes_to_read < static_cast<int>(remaining)) ? 
-                     bytes_to_read : static_cast<int>(remaining);
-        memcpy(data_out, responseData_.data() + offset_, bytes_read);
-        offset_ += bytes_read;
-        return true;
-    }
-
-    void Cancel() override {}
-
-private:
-    uint32_t webviewId_;
-    std::string mimeType_;
-    std::vector<char> responseData_;
-    bool hasResponse_;
-    size_t offset_;
-    IMPLEMENT_REFCOUNTING(ElectrobunSchemeHandler);
-};
-
-// CEF Scheme Handler Factory
-class ElectrobunSchemeHandlerFactory : public CefSchemeHandlerFactory {
-public:
-    CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser> browser,
-                                       CefRefPtr<CefFrame> frame,
-                                       const CefString& scheme_name,
-                                       CefRefPtr<CefRequest> request) override {
-        // Get webview ID from browser ID
-        uint32_t webviewId = 0;
-        if (browser) {
-            std::lock_guard<std::mutex> lock(browserMapMutex);
-            int browserId = browser->GetIdentifier();
-            auto it = browserToWebviewMap.find(browserId);
-            if (it != browserToWebviewMap.end()) {
-                webviewId = it->second;
-            }
-        }
-        return new ElectrobunSchemeHandler(webviewId);
-    }
-
-private:
-    IMPLEMENT_REFCOUNTING(ElectrobunSchemeHandlerFactory);
-};
 
 // CEF Response Filter for script injection
 class ElectrobunResponseFilter : public CefResponseFilter {
@@ -897,7 +785,7 @@ public:
     IMPLEMENT_REFCOUNTING(ElectrobunResourceRequestHandler);
 };
 
-// CEF Request Handler for views:// scheme support
+// CEF Request Handler
 class ElectrobunRequestHandler : public CefRequestHandler {
 public:
     uint32_t webview_id_ = 0;
@@ -2565,7 +2453,6 @@ public:
 
 
 // Forward declare helper functions
-std::string loadViewsFile(const std::string& path);
 std::string getMimeTypeForFile(const std::string& path);
 void updateActiveWebviewForMousePosition(ContainerView* container, POINT mousePos);
 
@@ -3077,23 +2964,9 @@ public:
 
     void updateCustomPreloadScript(const char* jsString) override {
         if (!jsString) return;
-
-        // Check if this is a views:// URL for a script file
-        if (strncmp(jsString, "views://", 8) == 0) {
-            std::string scriptContent = loadViewsFile(std::string(jsString + 8)); // Remove "views://" prefix
-            if (!scriptContent.empty()) {
-                if (browser) {
-                    CefRefPtr<CefFrame> frame = browser->GetMainFrame();
-                    if (frame) frame->ExecuteJavaScript(scriptContent.c_str(), frame->GetURL(), 0);
-                }
-            } else {
-                log(std::string("CEFView: Could not read preload script from: ") + std::string(jsString));
-            }
-        } else {
-            if (browser) {
-                CefRefPtr<CefFrame> frame = browser->GetMainFrame();
-                if (frame) frame->ExecuteJavaScript(jsString, frame->GetURL(), 0);
-            }
+        if (browser) {
+            CefRefPtr<CefFrame> frame = browser->GetMainFrame();
+            if (frame) frame->ExecuteJavaScript(jsString, frame->GetURL(), 0);
         }
     }
     
@@ -3717,7 +3590,7 @@ private:
         char className[256];
         GetClassNameA(child, className, sizeof(className));
         
-        // Look for WebView2/Chrome child windows
+        // Look for Chrome/CEF child windows
         if (strstr(className, "Chrome_WidgetWin") || 
             strstr(className, "Chrome_RenderWidgetHostHWND")) {
             
@@ -5214,8 +5087,8 @@ ELECTROBUN_EXPORT bool initCEF() {
     // Create the app
     g_cef_app = new ElectrobunCefApp();
 
-    // Read user-defined chromium flags from build.json
-    std::string buildJsonPath = std::string(exePath) + "\\..\\Resources\\build.json";
+    // Read user-defined chromium flags from build.json (in exe directory)
+    std::string buildJsonPath = std::string(exePath) + "\\build.json";
     std::string buildJsonContent = electrobun::readFileToString(buildJsonPath);
     if (!buildJsonContent.empty()) {
         g_userChromiumFlags = electrobun::parseChromiumFlags(buildJsonContent);
@@ -5266,8 +5139,7 @@ ELECTROBUN_EXPORT bool initCEF() {
     bool success = CefInitialize(main_args, settings, g_cef_app.get(), nullptr);
     if (success) {
         g_cef_initialized = true;
-        // Register the views:// scheme handler factory
-        CefRegisterSchemeHandlerFactory("views", "", new ElectrobunSchemeHandlerFactory());
+
         
         // We'll start the message pump timer when we create the first browser
     } else {
@@ -5326,13 +5198,6 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
 
     // Create the request context
     CefRefPtr<CefRequestContext> context = CefRequestContext::CreateContext(settings, nullptr);
-
-    // Register scheme handler factory for this request context
-    // Note: Each CefRequestContext needs its own registration - it's not global
-    static CefRefPtr<ElectrobunSchemeHandlerFactory> schemeFactory = new ElectrobunSchemeHandlerFactory();
-    bool registered = context->RegisterSchemeHandlerFactory("views", "", schemeFactory);
-    printf("DEBUG CEF: Registered scheme handler factory for partition '%s' - success: %s\n",
-           partitionIdentifier ? partitionIdentifier : "(default)", registered ? "yes" : "no");
 
     return context;
 }
@@ -5643,7 +5508,7 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
         if (initCEF()) {
             // With external_message_pump=true, CefDoMessageLoopWork does NOT
             // internally pump Windows messages. This prevents CEF from stealing
-            // WebView2 messages while still processing CEF work on a timer.
+            // our Windows messages while still processing CEF work on a timer.
             //
             // OnScheduleMessagePumpWork posts WM_CEF_SCHEDULE_WORK for immediate
             // work and uses SetTimer for delayed work. We also keep a baseline
@@ -5837,7 +5702,7 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
     bool sharedTexture = g_nextWebviewSharedTexture;
     g_nextWebviewSharedTexture = false;
 
-    // Serialize webview creation to avoid CEF/WebView2 conflicts
+    // Serialize webview creation to avoid conflicts
     std::lock_guard<std::mutex> lock(g_webviewCreationMutex);
 
 
@@ -6242,7 +6107,7 @@ ELECTROBUN_EXPORT void webviewToggleDevTools(AbstractView *abstractView) {
 
 ELECTROBUN_EXPORT void webviewSetPageZoom(AbstractView *abstractView, double zoomLevel) {
     // pageZoom is WebKit-specific, not available on Windows
-    // TODO: implement WebView2 zoom if needed
+    // TODO: implement zoom if needed
 }
 
 ELECTROBUN_EXPORT double webviewGetPageZoom(AbstractView *abstractView) {
@@ -7510,7 +7375,7 @@ ELECTROBUN_EXPORT void startWindowMove(NSWindow *window) {
     g_initialWindowPos.x = windowRect.left;
     g_initialWindowPos.y = windowRect.top;
     
-    // Register for raw mouse input to bypass WebView2 event consumption
+    // Register for raw mouse input to bypass CEF event consumption
     RAWINPUTDEVICE rid;
     rid.usUsagePage = 0x01;  // HID_USAGE_PAGE_GENERIC
     rid.usUsage = 0x02;      // HID_USAGE_GENERIC_MOUSE
@@ -8794,23 +8659,6 @@ ELECTROBUN_EXPORT uint32_t getWindowStyle(
 }
 
 } // extern "C"
-
-// Helper functions
-std::string loadViewsFile(const std::string& path) {
-    char currentDir[MAX_PATH];
-    if (GetCurrentDirectoryA(MAX_PATH, currentDir) == 0) {
-        ::log("ERROR: Failed to get current working directory");
-        return "";
-    }
-    // Views live at <cwd>\views\  (i.e. dist\views\ when run from dist\)
-    std::string fullPath = std::string(currentDir) + "\\views\\" + path;
-    std::ifstream file(fullPath, std::ios::binary);
-    if (!file.is_open()) {
-        ::log("ERROR: Could not open views file: " + fullPath);
-        return "";
-    }
-    return std::string((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-}
 
 // Shared MIME type detection function
 // Based on Bun runtime supported file types and web development standards

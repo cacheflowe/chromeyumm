@@ -28,7 +28,7 @@ cp -r package/src/native/shared/ ../chrome-yumm/native/shared/
 - `cef_response_filter.h` — HTTP response filter (preload injection)
 - `navigation_rules.h`    — URL navigation filtering
 - `permissions.h`         — sandbox permission rules
-- `mime_types.h`          — views:// MIME type map
+- `mime_types.h`          — file MIME type map
 - `preload_script.h`      — injected JS preload
 - `thread_safe_map.h`     — utility
 - `shutdown_guard.h`      — safe shutdown coordination
@@ -42,21 +42,42 @@ cp -r package/src/native/shared/ ../chrome-yumm/native/shared/
 #### Shared headers to skip
 
 - `json_menu_parser.h`  — native menus (not used)
-- `webview_storage.h`   — WebView2-only
+- `webview_storage.h`   — unused, can be removed
 - `download_event.h`    — optional, keep if you want download events
 
-## Vendor directories (NOT committed — supply separately)
+## Vendor directories (NOT committed — gitignored)
+
+### Automated setup (recommended)
+
+```bash
+bun scripts/setup-vendors.ts
+```
+
+This downloads CEF and Spout2 from their official sources, extracts them to the
+correct layout, and builds `libcef_dll_wrapper.lib` via CMake. Run it on a fresh
+clone, on a new machine, or when upgrading versions.
+
+Options:
+```bash
+bun scripts/setup-vendors.ts --cef-only          # CEF only
+bun scripts/setup-vendors.ts --spout-only         # Spout only
+bun scripts/setup-vendors.ts --cef-version "VERSION_STRING"
+bun scripts/setup-vendors.ts --spout-tag "TAG"
+bun scripts/setup-vendors.ts --cef-archive path/to/local.tar.bz2
+```
+
+See `docs/references/vendor-management.md` for long-term upgrade strategy.
 
 ### CEF  (`native/vendor/cef/`)
 
-Download a CEF prebuilt from: https://cef-builds.spotifycdn.com/index.html
-
+Source: https://cef-builds.spotifycdn.com/index.html
 Target: `Windows 64-bit` → `Standard Distribution`
 
 Required layout after extraction:
 ```
 native/vendor/cef/
-  include/          ← CEF C++ headers
+  .cef-version      ← version marker (created by setup script)
+  include/           ← CEF C++ headers
   Release/
     libcef.dll
     libcef.lib
@@ -79,7 +100,7 @@ native/vendor/cef/
         libcef_dll_wrapper.lib
 ```
 
-The `libcef_dll_wrapper.lib` must be built from the CEF CMake project:
+Building `libcef_dll_wrapper.lib` manually (the setup script does this automatically):
 ```
 cd native/vendor/cef
 mkdir build && cd build
@@ -89,13 +110,14 @@ cmake --build . --config Release --target libcef_dll_wrapper
 
 ### Spout  (`native/vendor/spout/`) — optional
 
+Source: https://github.com/leadedge/Spout2/releases
+
 Required only if building with Spout output support.
 
-Download SpoutDX from: https://github.com/leadedge/Spout2
-
-Build or obtain:
+Required layout:
 ```
 native/vendor/spout/
+  .spout-version     ← version marker (created by setup script)
   include/
     SpoutDX/
       SpoutDX.h
@@ -111,6 +133,13 @@ If `SpoutDX_static.lib` is absent, `build.ts` builds without Spout support
 
 ## CEF version upgrades
 
+Automated:
+```bash
+bun scripts/setup-vendors.ts --cef-only --cef-version "NEW_VERSION_STRING"
+bun build.ts
+```
+
+Manual:
 1. Download the new CEF prebuilt (same layout as above).
 2. Replace `native/vendor/cef/` contents.
 3. Rebuild `libcef_dll_wrapper.lib` (CMake step above).

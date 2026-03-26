@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { Electroview } from "electrobun/view";
 import { parseLayoutParams } from "../../components/layout-params.js";
 import "../../components/debug-panel.js";
 import "../../components/slot-overlay.js";
@@ -11,12 +10,6 @@ interface DebugPanelEl extends HTMLElement {
   readonly visible: boolean;
   readonly stats: { begin(): void; end(): number };
 }
-type ViewRPC = {
-  messages: {
-    setLayout: (layout: unknown) => void;
-  };
-  requests: Record<string, never>;
-};
 import "../../components/spout-receiver.js";
 
 // ---------------------------------------------------------------------------
@@ -39,21 +32,6 @@ const {
 const vpW = window.innerWidth;
 const vpH = window.innerHeight;
 const dpr = window.devicePixelRatio || 1;
-
-// ---------------------------------------------------------------------------
-// RPC (stageReady only — key commands handled by GlobalShortcut on the bun side)
-// ---------------------------------------------------------------------------
-
-const rpc = Electroview.defineRPC<ViewRPC>({
-  maxRequestTime: 10000,
-  handlers: {
-    requests: {},
-    messages: {
-      setLayout: () => {},
-    },
-  },
-});
-new Electroview({ rpc });
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -379,7 +357,6 @@ const dummy = new THREE.Object3D();
 // ---------------------------------------------------------------------------
 
 waitEl.style.display = "none";
-rpc.send.stageReady({ slot });
 
 // Mouse-driven camera tilt — updated by mousemove listener below.
 // If events reach the browser, moving the mouse noticeably tilts the scene.

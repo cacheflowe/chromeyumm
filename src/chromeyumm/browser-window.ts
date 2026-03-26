@@ -16,7 +16,6 @@ export interface BrowserWindowOptions {
   titleBarStyle?: "hidden" | "default";
   /** true = CEF OSR (offscreen rendering) mode — required for Spout/D3D output */
   spout?: boolean;
-  viewsRoot?: string;
 }
 
 export class BrowserWindow {
@@ -24,7 +23,9 @@ export class BrowserWindow {
   ptr!: Pointer;
   readonly webview: Webview;
   /** webviewId (alias for webview.id) — used by Spout/D3D FFI calls */
-  get webviewId(): number { return this.webview.id; }
+  get webviewId(): number {
+    return this.webview.id;
+  }
 
   constructor(opts: BrowserWindowOptions) {
     this.id = nextWindowId++;
@@ -36,14 +37,13 @@ export class BrowserWindow {
       frame: { x, y, width, height },
       titleBarStyle = "hidden",
       spout = false,
-      viewsRoot = process.cwd(),
     } = opts;
 
     // Build a borderless, hidden-titlebar style mask via getWindowStyle
     const styleMask = native.symbols.getWindowStyle(
       false, // Borderless
-      true,  // Titled
-      true,  // Closable
+      true, // Titled
+      true, // Closable
       false, // Miniaturizable
       false, // Resizable
       false, // UnifiedTitleAndToolbar
@@ -57,7 +57,10 @@ export class BrowserWindow {
 
     this.ptr = native.symbols.createWindowWithFrameAndStyleFromWorker(
       this.id,
-      x, y, width, height,
+      x,
+      y,
+      width,
+      height,
       styleMask,
       cs(titleBarStyle),
       false, // transparent
@@ -66,7 +69,7 @@ export class BrowserWindow {
       windowNoopCallback, // resize
       windowNoopCallback, // focus
       windowNoopCallback, // blur
-      windowKeyCallback,  // key
+      windowKeyCallback, // key
     ) as Pointer;
 
     if (!this.ptr) throw new Error(`[chromeyumm] createWindow failed (id=${this.id})`);
@@ -75,11 +78,15 @@ export class BrowserWindow {
     // Arm shared-texture (OSR) mode before webview creation when spout=true.
     if (spout) native.symbols.setNextWebviewSharedTexture(true);
 
-    this.webview = new Webview(this.ptr, this.id, url, width, height, viewsRoot);
+    this.webview = new Webview(this.ptr, this.id, url, width, height);
   }
 
-  show() { native.symbols.showWindow(this.ptr); }
-  hide() { native.symbols.hideWindow(this.ptr); }
+  show() {
+    native.symbols.showWindow(this.ptr);
+  }
+  hide() {
+    native.symbols.hideWindow(this.ptr);
+  }
 
   setAlwaysOnTop(value: boolean) {
     native.symbols.setWindowAlwaysOnTop(this.ptr, value);

@@ -43,12 +43,7 @@ public:
 
     // Extract origin from a URL (e.g., "https://example.com/path" -> "https://example.com")
     static std::string getOriginFromUrl(const std::string& url) {
-        // For views:// scheme, use a constant origin since these are local files
-        if (url.find("views://") == 0) {
-            return "views://";
-        }
-
-        // For other schemes, extract origin from URL
+        // Extract origin from URL
         size_t protocolEnd = url.find("://");
         if (protocolEnd == std::string::npos) return url;
 

@@ -191,7 +191,7 @@ For GPU-direct research findings (why `EGL_ANGLE_d3d_texture_client_buffer` does
 | `bun build.ts` | Compile C++ DLL + bundle TS + compile `chromeyumm.exe` + copy CEF runtime to `dist/` |
 | `bun build.ts --skip-native` | TS bundle + exe compile only (no MSVC) — fast, for TS-only changes |
 | `bun build.ts --dev` | Same as above but no minification, inline sourcemaps |
-| `bun start` | `cd dist && ./chromeyumm.exe` |
+| `bun start` | `dist/chromeyumm.exe` (runs from project root) |
 
 ### What requires a full rebuild
 
@@ -200,7 +200,7 @@ For GPU-direct research findings (why `EGL_ANGLE_d3d_texture_client_buffer` does
 | `native/cef-wrapper.cpp` or `cef-helper.cpp` | Full (`bun build.ts`) |
 | Anything in `src/chromeyumm/` | `--skip-native` is fine |
 | Anything in `src/app/` | `--skip-native` is fine |
-| `display-config.json` only | No rebuild — file is copied to dist/ on each build, or just copy it manually |
+| `display-config.json` only | No rebuild — found via cwd walk-up at runtime |
 | External `contentUrl` (`http://localhost:5173`) | No rebuild |
 
 ### Vendor setup (first time / new machine)
@@ -208,13 +208,11 @@ For GPU-direct research findings (why `EGL_ANGLE_d3d_texture_client_buffer` does
 See `native/README.md` for full instructions. The short version:
 
 ```powershell
-# Create junctions to existing vendor dirs (no large file copies)
-New-Item -ItemType Junction -Path native/vendor/cef     -Target path/to/cef/vendor
-New-Item -ItemType Junction -Path native/vendor/spout   -Target path/to/spout/vendor
-New-Item -ItemType Junction -Path native/vendor/webview2 -Target path/to/webview2/vendor
+# Download vendors (CEF + Spout)
+bun scripts/setup-vendors.ts
 
 # shared/ junction so #include "../shared/foo.h" resolves from native/
-New-Item -ItemType Junction -Path shared -Target native/shared
+# (created automatically by setup-vendors.ts)
 ```
 
 ---
@@ -244,11 +242,10 @@ C++ calls `eventBridgeCallback` (a `JSCallback`) with `{id: "webviewEvent", payl
 ## Known Issues
 
 - `loadURL()` ignores its url argument — use `location.reload()` for content reload (Ctrl+R uses `executeJavascript("location.reload()")`)
-- `views://` URL query strings required the `?` stripping fix in `ElectrobunSchemeHandler::Open` — already applied in `cef-wrapper.cpp`
-- GPU process crash at ~30s without `in-process-gpu: true` — already set in `display-config.json`'s chromium flags (via `electrobun.config.ts` originally; now hardcoded in the build config / chromium_flags.h)
+- GPU process crash at ~30s without `in-process-gpu: true` — now set as a default chromium flag in `OnBeforeCommandLineProcessing`
 - Ctrl+D / debug panel only works when the loaded page includes `debug-panel.js` and registers `window.__ebPanelToggle`. Remote HTTPS pages don't have it — the shortcut fires but the JS function is undefined (silent no-op in browser, logged in console)
 - `disable-features=VizDisplayCompositor` removed — caused GPU crash in CEF 145+. Do not add it back.
-- **"Black window" diagnosis**: in OSR mode, the master HWND is always black — CEF doesn't paint to it. Content only exists in the `OnAcceleratedPaint` shared texture. To verify the pipeline vs. the content, do a staging-texture pixel readback on the first frame: alpha=0 → unrendered, alpha=FF + black RGB → CEF rendered but the page content is black (e.g., CSS `background:#000` with failed JS load). Use `views://r3f/dist/index.html` not `views://r3f/index.html` — the latter requires a Vite dev server for `/src/main.tsx`.
+- **"Black window" diagnosis**: in OSR mode, the master HWND is always black — CEF doesn't paint to it. Content only exists in the `OnAcceleratedPaint` shared texture. To verify the pipeline vs. the content, do a staging-texture pixel readback on the first frame: alpha=0 → unrendered, alpha=FF + black RGB → CEF rendered but the page content is black (e.g., CSS `background:#000` with failed JS load).
 
 ---
 
@@ -276,7 +273,7 @@ The CEF C++ API surface we use is very stable. Breaking changes are documented i
 
 ## Planned Work
 
-- **Strip `cef-wrapper.cpp`** — remove WebView2 fallback path (~800 lines), ASAR reading (~200 lines), WGPU shims (~400 lines, already `#ifdef`'d), update/packaging machinery (~300 lines). Establish clean baseline first, strip section by section with a build test after each.
+- **Strip `cef-wrapper.cpp`** — remove ASAR reading (~200 lines), WGPU shims (~400 lines, already `#ifdef`'d), update/packaging machinery (~300 lines). Establish clean baseline first, strip section by section with a build test after each.
 - **GitHub releases** — write `scripts/release.ts` to tag, package, and push versioned releases (replaces `installation-browser/scripts/release.ts`)
 - **Consolidated debug panel** — single Ctrl+D panel with fps, draw calls, canvas size, mouse coords, Spout status, mode info, key reference. Replaces scattered `debugEl` + stats.js + slot overlay.
 - **Rename helper processes** — once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).exe` and friends to `helperNames` in `src/app/index.ts` for the GPU-preference registry writes. Currently only `chromeyumm.exe` and `chromeyumm Helper.exe` are registered.

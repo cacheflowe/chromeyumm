@@ -62,11 +62,10 @@ bun build.ts --dev
 ### Run
 
 ```bash
-cd dist
-bun app.js
+dist/chromeyumm.exe
 ```
 
-Configure `display-config.json` in the project root (copied to `dist/` on each build).
+Configure `display-config.json` in the project root (found via cwd walk-up at runtime).
 
 ---
 
@@ -129,7 +128,7 @@ display-config.json      Display layout config
   "fullscreen": false,
   "startInteractive": false,
 
-  "contentUrl": "views://threejs/index.html",
+  "contentUrl": "http://localhost:5173",
 
   // Spout output (comment out to use multi-window D3D output)
   "spoutOutput": { "senderName": "Chromeyumm" },
@@ -151,7 +150,7 @@ If `display-config.json` is absent, the app auto-detects connected displays and 
 | **Ctrl+Shift+M** | Reset display windows (recover from monitor topology changes) |
 | **Ctrl+R** | Reload content |
 | **Ctrl+F** | Toggle alwaysOnTop |
-| **Ctrl+D** | Toggle debug panel (only works with bundled `views://` pages) |
+| **Ctrl+D** | Toggle debug panel (pages must include debug-panel.js) |
 | **Escape** | Quit cleanly |
 
 ---
