@@ -6873,33 +6873,47 @@ ELECTROBUN_EXPORT bool startD3DOutput(uint32_t webviewId) {
         return false;
     }
     auto& state = it->second;
-    if (state.active) {
-        ::log("D3DOutput: already active for webviewId " + std::to_string(webviewId));
-        return false;
+    if (!state.active) {
+        // No Spout sender active — create our own D3D11 device for NDW blitting.
+        D3D_FEATURE_LEVEL featureLevel;
+        ID3D11DeviceContext* context = nullptr;
+        HRESULT hr = D3D11CreateDevice(
+            nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            nullptr, 0, D3D11_SDK_VERSION,
+            &state.d3dDevice, &featureLevel, &context);
+        if (FAILED(hr)) {
+            char buf[16]; sprintf_s(buf, "%08X", (UINT)hr);
+            ::log("D3DOutput: D3D11CreateDevice failed hr=0x" + std::string(buf));
+            return false;
+        }
+        state.d3dContext = context;
+
+        // Create swap chain on master HWND for DWM surface (same as startSpoutSender).
+        state.swapChain = createSwapChainForHwnd(state.d3dDevice, state.hwnd, state.width, state.height);
+
+        // Mark active — OnAcceleratedPaint will now open sharedTex and execute the D3D output block.
+        // state.sender is null, so SendTexture is skipped.
+        state.active = true;
+
+        // Log which GPU was selected.
+        IDXGIDevice* dxgiDev = nullptr;
+        if (SUCCEEDED(state.d3dDevice->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDev))) {
+            IDXGIAdapter* adapter = nullptr;
+            if (SUCCEEDED(dxgiDev->GetAdapter(&adapter))) {
+                DXGI_ADAPTER_DESC desc = {};
+                adapter->GetDesc(&desc);
+                char name128[128] = {};
+                WideCharToMultiByte(CP_ACP, 0, desc.Description, -1, name128, sizeof(name128), nullptr, nullptr);
+                ::log("D3DOutput: D3D11 device on: " + std::string(name128));
+                adapter->Release();
+            }
+            dxgiDev->Release();
+        }
+    } else {
+        // Spout sender already initialized the D3D device — reuse it for NDW blitting.
+        ::log("D3DOutput: reusing Spout D3D11 device for webviewId " + std::to_string(webviewId));
     }
-
-    // Create D3D11 device — identical to startSpoutSender, minus SpoutDX.
-    // This is the proven path for OpenSharedResource1 on this device type.
-    D3D_FEATURE_LEVEL featureLevel;
-    ID3D11DeviceContext* context = nullptr;
-    HRESULT hr = D3D11CreateDevice(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
-        D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-        nullptr, 0, D3D11_SDK_VERSION,
-        &state.d3dDevice, &featureLevel, &context);
-    if (FAILED(hr)) {
-        char buf[16]; sprintf_s(buf, "%08X", (UINT)hr);
-        ::log("D3DOutput: D3D11CreateDevice failed hr=0x" + std::string(buf));
-        return false;
-    }
-    state.d3dContext = context;
-
-    // Create swap chain on master HWND for DWM surface (same as startSpoutSender).
-    state.swapChain = createSwapChainForHwnd(state.d3dDevice, state.hwnd, state.width, state.height);
-
-    // Mark active — OnAcceleratedPaint will now open sharedTex and execute the D3D output block.
-    // state.sender is null, so SendTexture is skipped.
-    state.active = true;
 
     // Tell CEF to keep rendering even when the host HWND is hidden.
     // Without this, ShowWindow(SW_HIDE) on the master HWND causes CEF's compositor
@@ -6911,21 +6925,6 @@ ELECTROBUN_EXPORT bool startD3DOutput(uint32_t webviewId) {
                 bIt->second->GetHost()->WasHidden(false);
             break;
         }
-    }
-
-    // Log which GPU was selected.
-    IDXGIDevice* dxgiDev = nullptr;
-    if (SUCCEEDED(state.d3dDevice->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDev))) {
-        IDXGIAdapter* adapter = nullptr;
-        if (SUCCEEDED(dxgiDev->GetAdapter(&adapter))) {
-            DXGI_ADAPTER_DESC desc = {};
-            adapter->GetDesc(&desc);
-            char name128[128] = {};
-            WideCharToMultiByte(CP_ACP, 0, desc.Description, -1, name128, sizeof(name128), nullptr, nullptr);
-            ::log("D3DOutput: D3D11 device on: " + std::string(name128));
-            adapter->Release();
-        }
-        dxgiDev->Release();
     }
 
     // Create empty slot list for this webviewId.

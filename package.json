@@ -6,6 +6,7 @@
     "build": "bun build.ts",
     "dev": "bun build.ts --dev",
     "start": "dist/chromeyumm.exe",
+    "demo": "bun scripts/r3f.ts",
     "release": "bun scripts/release.ts",
     "release:publish": "bun scripts/release.ts --publish"
   },

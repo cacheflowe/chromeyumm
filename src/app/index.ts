@@ -177,7 +177,14 @@ slots.forEach((s) =>
 if (contentUrl) console.log(`[chromeyumm] Content URL: ${contentUrl}`);
 if (fullscreen) console.log("[chromeyumm] fullscreen: true");
 if (alwaysOnTop) console.log("[chromeyumm] alwaysOnTop: true");
-console.log(`[chromeyumm] Mode: ${config?.spoutOutput ? "spout output" : "multi-window D3D output"} / ANGLE: d3d11`);
+const useD3DOutput = slots.length > 0;
+const modeSpout = !!config?.spoutOutput;
+const modeMultiWindow = useD3DOutput;
+const modeParts = [
+  modeSpout ? `spout → "${config!.spoutOutput!.senderName}"` : null,
+  modeMultiWindow ? `multi-window D3D (${slots.length} slot${slots.length !== 1 ? "s" : ""})` : null,
+].filter(Boolean);
+console.log(`[chromeyumm] Mode: ${modeParts.join(" + ") || "headless"} / ANGLE: d3d11`);
 
 // ---------------------------------------------------------------------------
 // Spout input — start BEFORE BrowserWindow so the shared-memory mapping
@@ -225,8 +232,6 @@ const masterUrl = `${_baseUrl}${_baseUrl.includes("?") ? "&" : "?"}${urlParams.j
 
 const masterX = Math.min(...slots.map((s) => s.windowX));
 const masterY = Math.min(...slots.map((s) => s.windowY));
-
-const useD3DOutput = !config?.spoutOutput;
 
 const master = new BrowserWindow({
   title: "chromeyumm",
@@ -290,9 +295,19 @@ function resetDisplayWindows() {
   console.log("[chromeyumm] Display windows reset complete.");
 }
 
-if (!config?.spoutOutput) {
-  createDisplayWindows();
-}
+createDisplayWindows();
+
+const SEP = "[chromeyumm] " + "─".repeat(52);
+console.log(SEP);
+console.log("[chromeyumm]  ACTIVE OUTPUTS");
+if (modeSpout)
+  console.log(`[chromeyumm]    Spout        → "${config!.spoutOutput!.senderName}"`);
+if (modeMultiWindow)
+  console.log(`[chromeyumm]    Multi-window → ${displayWindows.length} D3D display window${displayWindows.length !== 1 ? "s" : ""}`);
+if (!modeSpout && !modeMultiWindow)
+  console.log("[chromeyumm]    (none — headless)");
+console.log(`[chromeyumm]  Content URL  → ${contentUrl}`);
+console.log(SEP);
 
 // ---------------------------------------------------------------------------
 // Interactive mode
