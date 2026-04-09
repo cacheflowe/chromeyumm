@@ -4,7 +4,7 @@
 As a live visual artist, I want to render a single web canvas and distribute sub-regions to multiple physical displays, so I can run an installation across any number of projectors/screens from one render pass.
 
 ## Activation
-Enabled by default when `"spoutOutput"` is absent from `display-config.json`.
+Enabled whenever display windows are configured (either via `display-config.json` windows or auto-detected displays). Works alongside Spout output — when both are active, `startD3DOutput` reuses the D3D11 device created by the Spout sender.
 
 ## Data Flow
 

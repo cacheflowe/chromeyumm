@@ -19,15 +19,17 @@ The "backend" is `libNativeWrapper.dll` — a single C++ DLL compiled from `nati
 | Struct | Purpose |
 |---|---|
 | `D3DOutputSlot` | HWND, `IDXGISwapChain1*`, source x/y/w/h for one display window |
-| `D3DOutputState` | D3D11 device/context, active flag, `vector<D3DOutputSlot>` |
+| `D3DOutputState` | `vector<D3DOutputSlot>` — the slot list for one webview |
 | `g_d3dOutputStates` | Map of webviewId → `D3DOutputState` |
 
 ### Spout Output
 
 | Struct | Purpose |
 |---|---|
-| `SpoutWindowState` | D3D11 device/context, SpoutDX sender, DXGI swap chain, active flag |
+| `SpoutWindowState` | D3D11 device/context, SpoutDX sender, DXGI swap chain, active flag — shared by both Spout and D3D output pipelines |
 | `g_nextWebviewSharedTexture` | Flag set by `setNextWebviewSharedTexture` before webview creation |
+
+**Coexistence**: Spout sender and D3D multi-window output share the same `SpoutWindowState.d3dDevice`. When both are active, `startD3DOutput` reuses the Spout-created device (skips `D3D11CreateDevice`). `stopD3DOutput` only releases the device when `state.sender == nullptr` (D3D-only mode); otherwise Spout retains ownership.
 
 ### Spout Input
 

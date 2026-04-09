@@ -14,9 +14,6 @@ See: [tech-debt-tracker.md](tech-debt-tracker.md)
 
 ## Planned
 
-### GitHub Releases
-Write `scripts/release.ts` to tag, package, and push versioned releases. Will replace the old `installation-browser/scripts/release.ts`.
-
 ### Consolidated Debug Panel
 Single Ctrl+D panel with: fps, draw calls, canvas size, mouse coords, Spout status, mode info, key reference. Replaces scattered `debugEl` + stats.js + slot overlay.
 
@@ -29,6 +26,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - CI build pipeline (GitHub Actions, self-hosted runner for MSVC + CEF)
 - Crash/error logging to disk
 - Add automated system to pull latest Spout / CEF versions into codebase
+- CConvert ELECTROBUN references to Chromeyumm (e.g., `ELECTROBUN_VERSION` → `CHROMEYUMM_VERSION`)
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
 
 ## Completed
@@ -40,6 +38,9 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - Spout input two-tier shared memory bridge
 - Detach from Electrobun upstream
 - Docs system (harness-engineering model)
+- WebView2 removal (stripped all WebView2 code from cef-wrapper.cpp)
+- Spout + D3D multi-window coexistence (both output modes run simultaneously, sharing D3D device)
+- GitHub Releases (`scripts/release.ts` — tag, package, publish)
 
 ## Related
 

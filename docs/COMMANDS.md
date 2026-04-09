@@ -17,6 +17,7 @@ All commands run from the project root unless noted.
 |---|---|
 | `bun start` | Run compiled exe from project root |
 | `dist/chromeyumm.exe` | Run compiled exe directly |
+| `bun run demo` | Start R3F Vite dev server + chromeyumm browser together |
 
 ## Vendor Setup (first time / new machine)
 

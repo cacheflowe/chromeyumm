@@ -2,6 +2,7 @@
 
 | Item | Impact | Priority | Owner | Target | Status |
 |---|---|---|---|---|---|
+| WebView2 code (~630 lines) | Dead code in cef-wrapper.cpp | P1 | — | — | **Done** |
 | ASAR reading code (~200 lines) | Dead code in cef-wrapper.cpp | P1 | — | — | Not started |
 | WGPU shims (~400 lines) | Dead code (already `#ifdef`'d, but still maintained) | P2 | — | — | Not started |
 | Update/packaging machinery (~300 lines) | Dead code from Electrobun | P1 | — | — | Not started |
@@ -15,7 +16,8 @@
 ## Stripping Plan
 
 Strip `cef-wrapper.cpp` heritage code in order:
-1. Update/packaging machinery — self-contained section
+1. ~~WebView2 code~~ — **Done** (removed ~630 lines: cookie management, scheme handlers, view code, globals, includes)
+2. Update/packaging machinery — self-contained section
 3. ASAR reading — referenced in `<scheme>Handler::Open`, replace with simpler path
 4. WGPU shims — already `#ifdef`'d, just remove the blocks
 

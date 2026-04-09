@@ -11,7 +11,7 @@ Add `"spoutOutput"` to `display-config.json`:
 }
 ```
 
-When present, D3D multi-window output is disabled (no NativeDisplayWindows created).
+When present, the master browser sends each frame to Spout. This can run alongside D3D multi-window output — both pipelines share the same D3D11 device and execute sequentially in `OnAcceleratedPaint`.
 
 ## Data Flow
 
@@ -44,7 +44,6 @@ SpoutDX static library must be present at `native/vendor/spout/MT/lib/SpoutDX_st
 ## Out of Scope
 - Multiple Spout senders (one sender per app instance)
 - Spout sender name changes at runtime
-- Spout output + D3D multi-window output simultaneously
 
 ## Related
 - [multi-window-d3d-output.md](multi-window-d3d-output.md) — Alternative output mode
