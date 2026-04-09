@@ -103,10 +103,6 @@ async function buildNative() {
   if (spoutArg) console.log("SpoutDX found — Spout output enabled.");
   else console.log("SpoutDX not found — building without Spout output.");
 
-  // WGPU is optional — gate on vendor presence (matches electrobun pattern)
-  const wgpuIncDir = join(NATIVE_DIR, "vendor", "wgpu", "win-x64", "include");
-  const wgpuFlag = existsSync(wgpuIncDir) ? `/I"${wgpuIncDir}" /DELECTROBUN_HAS_WGPU` : "";
-
   const obj = join(NATIVE_DIR, "build", "cef-wrapper.obj");
   const dll = join(NATIVE_DIR, "build", "libNativeWrapper.dll");
   const helperObj = join(NATIVE_DIR, "build", "cef-helper.obj");
@@ -115,7 +111,7 @@ async function buildNative() {
   // Compile DLL
   await runMsvc(
     `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
-      ` /I"${cefInclude}" ${wgpuFlag}` +
+      ` /I"${cefInclude}"` +
       ` /D_USRDLL /D_WINDLL` +
       ` /Fo"${obj}" "${join(NATIVE_DIR, "cef-wrapper.cpp")}"`,
   );
@@ -236,11 +232,13 @@ async function copyRuntime() {
     });
     console.log(`✓ CEF resources copied (en-US locale only)`);
   }
+  // Copy app icon if present
+  const appIcon = join(NATIVE_DIR, "app.ico");
+  if (existsSync(appIcon)) {
+    copyFileSync(appIcon, join(DIST_DIR, "app.ico"));
+    console.log("✓ App icon copied");
+  }
 }
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
 
 console.log(`\nChromeyumm build  [${isDev ? "dev" : "release"}]`);
 console.log("─".repeat(50));

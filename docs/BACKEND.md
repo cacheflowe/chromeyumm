@@ -2,15 +2,15 @@
 
 ## Overview
 
-The "backend" is `libNativeWrapper.dll` — a single C++ DLL compiled from `native/cef-wrapper.cpp` (~12k lines) plus the renderer helper `native/cef-helper.cpp`. This DLL is loaded by Bun via `dlopen` in `src/chromeyumm/ffi.ts`.
+The "backend" is `libNativeWrapper.dll` — a single C++ DLL compiled from `native/cef-wrapper.cpp` (~9k lines) plus the renderer helper `native/cef-helper.cpp`. This DLL is loaded by Bun via `dlopen` in `src/chromeyumm/ffi.ts`.
 
 ## C++ Source Files
 
 | File | Lines | Role |
 |---|---|---|
-| `native/cef-wrapper.cpp` | ~12k | Main DLL: CEF initialization, window management, D3D11 output, Spout I/O, event loop |
+| `native/cef-wrapper.cpp` | ~9k | Main DLL: CEF initialization, window management, D3D11 output, Spout I/O, event loop |
 | `native/cef-helper.cpp` | ~300 | CEF renderer process: V8 bindings for Spout input, navigation fixes |
-| `native/shared/*.h` | ~20 files | Shared headers: callbacks, config, parsers, accelerator handling, etc. |
+| `native/shared/*.h` | ~16 files | Shared headers: callbacks, config, parsers, accelerator handling, etc. |
 
 ## Key C++ Structures
 
@@ -122,15 +122,12 @@ Main event: `dom-ready` (used by master webview to inject scripts after page loa
 
 ## Critical Implementation Notes
 
+- **App icon**: `getAppIcon()` loads `app.ico` from the exe directory once (cached), `applyAppIcon(hwnd)` sends `WM_SETICON` (big + small) to any window. Applied to both `BasicWindowClass` and `NativeDisplayWindowClass` windows at creation time.
 - **`DO_NOT_WAIT` inner loop** in Spout receiver: the Map retry must be inside the inner loop. Calling `ReceiveTexture()` again in the outer loop resets the sequence — texture data is lost.
 - **NVIDIA adapter selection**: Spout receiver uses explicit DXGI enumeration (VendorId `0x10DE`) to avoid Intel/NVIDIA cross-adapter PCIe penalty on Optimus.
 - **Source box clamping**: D3D output queries `D3D11_TEXTURE2D_DESC` on first frame and clamps coordinates to texture dims to avoid invalid `CopySubresourceRegion` calls.
 - **ANGLE backend**: Always `use-angle=d3d11`. Other backends crash in OSR mode.
 - **`disable-features=VizDisplayCompositor`**: Removed — crashes GPU process in CEF 145+. Do not add back.
-
-## WGPU Guard
-
-`#ifdef ELECTROBUN_HAS_WGPU` wraps Dawn/WGPU includes and shims. `build.ts` sets `/DELECTROBUN_HAS_WGPU` only if `native/vendor/wgpu/win-x64/include` exists. Safe to ignore unless adding WebGPU support.
 
 ## Related
 

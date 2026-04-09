@@ -1,6 +1,9 @@
+
+![Chromeyumm logo](native/app.png)
+
 # Chromeyumm
 
-A minimal Windows CEF browser built for live installations. Renders web content across multiple displays via direct D3D11 GPU blitting, with Spout texture I/O for integration with TouchDesigner, Resolume, and other real-time environments.
+A minimal Windows CEF browser built for site-specific installations. Renders web content across multiple displays via direct D3D11 GPU blitting, with Spout texture I/O for integration with TouchDesigner, Resolume, and other real-time environments.
 
 ---
 
@@ -57,12 +60,15 @@ bun build.ts --skip-native
 
 # Development (no minification)
 bun build.ts --dev
+
+# Shortcut
+bun dev
 ```
 
 ### Run
 
 ```bash
-dist/chromeyumm.exe
+bun start
 ```
 
 Configure `display-config.json` in the project root (found via cwd walk-up at runtime).
@@ -130,7 +136,7 @@ display-config.json      Display layout config
 
   "contentUrl": "http://localhost:5173",
 
-  // Spout output (comment out to use multi-window D3D output)
+  // Spout output (can run alongside multi-window D3D output)
   "spoutOutput": { "senderName": "Chromeyumm" },
 
   // Spout input (optional — works in any mode)

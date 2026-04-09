@@ -25,7 +25,7 @@ Global shortcuts are registered via `GlobalShortcut.register()` in `src/app/inde
 
 ## Edge Cases
 - Ctrl+D is a silent no-op if the page doesn't register `window.__ebPanelToggle` (e.g., external HTTPS pages)
-- Ctrl+M and Ctrl+Shift+M are not registered in Spout output mode (no display windows to toggle)
+- Ctrl+M and Ctrl+Shift+M are not registered when Spout output is active (master window stays visible for Spout; display windows are managed by D3D output)
 - `loadURL()` is broken — Ctrl+R uses `location.reload()` instead
 
 ## Out of Scope

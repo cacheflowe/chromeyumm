@@ -75,6 +75,7 @@ GitHub Actions: push a `v*` tag to trigger `.github/workflows/release.yml` autom
 | Anything in `src/chromeyumm/` | `bun build.ts --skip-native` |
 | Anything in `src/app/` | `bun build.ts --skip-native` |
 | `display-config.json` only | No rebuild — found via cwd walk-up at runtime |
+| `native/app.ico` | Full (`bun build.ts`) — copies icon to `dist/` |
 | External `contentUrl` (`http://localhost:5173`) | No rebuild |
 | `src/views/r3f/` source | `cd src/views/r3f && bun run build` (served via dev server, not bundled into dist) |
 

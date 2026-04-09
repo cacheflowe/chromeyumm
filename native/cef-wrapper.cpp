@@ -50,8 +50,6 @@
 #include "shared/thread_safe_map.h"
 #include "shared/shutdown_guard.h"
 #include "shared/ffi_helpers.h"
-#include "shared/json_menu_parser.h"
-#include "shared/download_event.h"
 #include "shared/app_paths.h"
 #include "shared/accelerator_parser.h"
 #include "shared/chromium_flags.h"
@@ -2455,6 +2453,35 @@ public:
 // Forward declare helper functions
 std::string getMimeTypeForFile(const std::string& path);
 
+// Load app.ico from the same directory as the running exe (cached after first call).
+static HICON getAppIcon() {
+    static HICON icon = nullptr;
+    static bool loaded = false;
+    if (!loaded) {
+        loaded = true;
+        char exePath[MAX_PATH];
+        GetModuleFileNameA(NULL, exePath, MAX_PATH);
+        std::string icoPath(exePath);
+        auto slash = icoPath.find_last_of("\\/");
+        if (slash != std::string::npos) icoPath = icoPath.substr(0, slash + 1);
+        icoPath += "app.ico";
+        icon = (HICON)LoadImageA(NULL, icoPath.c_str(),
+            IMAGE_ICON, 0, 0, LR_LOADFROMFILE | LR_DEFAULTSIZE);
+        if (!icon)
+            ::log("Icon not found: " + icoPath + " — using default");
+    }
+    return icon;
+}
+
+// Apply the app icon to a window (taskbar + title bar).
+static void applyAppIcon(HWND hwnd) {
+    HICON icon = getAppIcon();
+    if (icon) {
+        SendMessage(hwnd, WM_SETICON, ICON_BIG, (LPARAM)icon);
+        SendMessage(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)icon);
+    }
+}
+
 void log(const std::string& message) {
     // Get current time
     std::time_t now = std::time(0);
@@ -3265,154 +3292,6 @@ public:
             client->OnRemoteDevToolsClosed(target_id);
         } else {
             client->OpenRemoteDevToolsFrontend(browser);
-        }
-    }
-};
-
-// WGPUView class - simple native child window surface
-class WGPUView : public AbstractView {
-public:
-    WGPUView(uint32_t webviewId) {
-        this->webviewId = webviewId;
-    }
-
-    void loadURL(const char* urlString) override {}
-    void loadHTML(const char* htmlString) override {}
-    void goBack() override {}
-    void goForward() override {}
-    void reload() override {}
-    bool canGoBack() override { return false; }
-    bool canGoForward() override { return false; }
-    void evaluateJavaScriptWithNoCompletion(const char* jsString) override {}
-    void callAsyncJavascript(const char* messageId, const char* jsString, uint32_t webviewId, uint32_t hostWebviewId, void* completionHandler) override {}
-    void addPreloadScriptToWebView(const char* jsString) override {}
-    void updateCustomPreloadScript(const char* jsString) override {}
-
-    void resize(const RECT& frame, const char* masksJson) override {
-        if (hwnd) {
-            int width = frame.right - frame.left;
-            int height = frame.bottom - frame.top;
-            SetWindowPos(hwnd, HWND_TOP, frame.left, frame.top, width, height,
-                        SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        }
-        visualBounds = frame;
-        bool maskChanged = false;
-        if (masksJson && strlen(masksJson) > 0 && strcmp(masksJson, "[]") != 0) {
-            std::string newMaskJSON = masksJson;
-            if (newMaskJSON != maskJSON) {
-                maskJSON = newMaskJSON;
-                maskChanged = true;
-            }
-        } else if (!maskJSON.empty()) {
-            maskJSON = "";
-            maskChanged = true;
-        }
-
-        if (maskChanged) {
-            applyVisualMask();
-        }
-    }
-
-    void setTransparent(bool transparent) override {
-        if (!hwnd) return;
-        LONG exStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
-        SetWindowLong(hwnd, GWL_EXSTYLE, exStyle | WS_EX_LAYERED);
-        BYTE alpha = transparent ? 0 : 255;
-        SetLayeredWindowAttributes(hwnd, 0, alpha, LWA_ALPHA);
-    }
-
-    void setPassthrough(bool enable) override {
-        AbstractView::setPassthrough(enable);
-        if (hwnd) {
-            EnableWindow(hwnd, enable ? FALSE : TRUE);
-        }
-    }
-
-    void setHidden(bool hidden) override {
-        if (hwnd) {
-            ShowWindow(hwnd, hidden ? SW_HIDE : SW_SHOW);
-        }
-    }
-
-    void applyVisualMask() override {
-        if (!hwnd) return;
-
-        if (maskJSON.empty()) {
-            RECT windowRect;
-            GetClientRect(hwnd, &windowRect);
-            HRGN fullRegion = CreateRectRgn(0, 0, windowRect.right, windowRect.bottom);
-            SetWindowRgn(hwnd, fullRegion, TRUE);
-            return;
-        }
-
-        try {
-            int width = visualBounds.right - visualBounds.left;
-            int height = visualBounds.bottom - visualBounds.top;
-            if (width <= 0 || height <= 0) return;
-
-            HRGN baseRegion = CreateRectRgn(0, 0, width, height);
-
-            size_t pos = 0;
-            while ((pos = maskJSON.find("\"x\":", pos)) != std::string::npos) {
-                try {
-                    size_t xStart = maskJSON.find(":", pos) + 1;
-                    size_t xEnd = maskJSON.find(",", xStart);
-                    int x = std::stoi(maskJSON.substr(xStart, xEnd - xStart));
-
-                    size_t yPos = maskJSON.find("\"y\":", pos);
-                    size_t yStart = maskJSON.find(":", yPos) + 1;
-                    size_t yEnd = maskJSON.find(",", yStart);
-                    int y = std::stoi(maskJSON.substr(yStart, yEnd - yStart));
-
-                    size_t wPos = maskJSON.find("\"width\":", pos);
-                    size_t wStart = maskJSON.find(":", wPos) + 1;
-                    size_t wEnd = maskJSON.find(",", wStart);
-                    if (wEnd == std::string::npos) wEnd = maskJSON.find("}", wStart);
-                    int maskWidth = std::stoi(maskJSON.substr(wStart, wEnd - wStart));
-
-                    size_t hPos = maskJSON.find("\"height\":", pos);
-                    size_t hStart = maskJSON.find(":", hPos) + 1;
-                    size_t hEnd = maskJSON.find("}", hStart);
-                    int maskHeight = std::stoi(maskJSON.substr(hStart, hEnd - hStart));
-
-                    HRGN holeRegion = CreateRectRgn(x, y, x + maskWidth, y + maskHeight);
-                    if (holeRegion) {
-                        CombineRgn(baseRegion, baseRegion, holeRegion, RGN_DIFF);
-                        DeleteObject(holeRegion);
-                    }
-
-                    pos = hEnd;
-                } catch (...) {
-                    pos++;
-                }
-            }
-
-            SetWindowRgn(hwnd, baseRegion, TRUE);
-        } catch (...) {
-            // Ignore mask parse errors
-        }
-    }
-
-    void removeMasks() override {
-        if (!hwnd) return;
-        RECT windowRect;
-        GetClientRect(hwnd, &windowRect);
-        HRGN fullRegion = CreateRectRgn(0, 0, windowRect.right, windowRect.bottom);
-        SetWindowRgn(hwnd, fullRegion, TRUE);
-        maskJSON.clear();
-    }
-    void toggleMirrorMode(bool enable) override {}
-
-    void findInPage(const char* searchText, bool forward, bool matchCase) override {}
-    void stopFindInPage() override {}
-    void openDevTools() override {}
-    void closeDevTools() override {}
-    void toggleDevTools() override {}
-
-    void remove() override {
-        if (hwnd) {
-            DestroyWindow(hwnd);
-            hwnd = NULL;
         }
     }
 };
@@ -5733,87 +5612,6 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
 
 }
 
-ELECTROBUN_EXPORT AbstractView* initWGPUView(uint32_t webviewId,
-                         NSWindow *window,  // Actually HWND on Windows
-                         double x, double y,
-                         double width, double height,
-                         bool autoResize,
-                         bool startTransparent,
-                         bool startPassthrough) {
-
-    HWND hwnd = reinterpret_cast<HWND>(window);
-    if (!IsWindow(hwnd)) {
-        ::log("ERROR: initWGPUView called with invalid window handle");
-        return nullptr;
-    }
-
-    auto view = std::make_shared<WGPUView>(webviewId);
-    view->fullSize = autoResize;
-
-    // Create both container and WGPUView child on the main thread to avoid
-    // cross-thread child window deadlock (container on FFI thread + child on
-    // main thread would deadlock because CreateWindowExA sends messages to
-    // the parent's thread which is blocked on dispatch_sync).
-    ContainerView* container = nullptr;
-    MainThreadDispatcher::dispatch_sync([&container, view, hwnd, x, y, width, height, startTransparent, startPassthrough]() {
-        // Get or create container on main thread
-        container = GetOrCreateContainer(hwnd);
-        if (!container) {
-            ::log("ERROR: Failed to create container for WGPUView");
-            return;
-        }
-
-        HWND containerHwnd = container->GetHwnd();
-        if (!IsWindow(containerHwnd)) {
-            ::log("ERROR: Container window handle invalid for WGPUView");
-            return;
-        }
-
-        view->hwnd = CreateWindowExA(
-            0,
-            "STATIC",
-            "",
-            WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
-            (int)x,
-            (int)y,
-            (int)width,
-            (int)height,
-            containerHwnd,
-            NULL,
-            GetModuleHandle(NULL),
-            NULL
-        );
-
-        if (!view->hwnd) {
-            ::log("ERROR: Failed to create WGPUView child window");
-            return;
-        }
-
-        RECT bounds = {(LONG)x, (LONG)y, (LONG)(x + width), (LONG)(y + height)};
-        view->visualBounds = bounds;
-
-        if (startTransparent) {
-            view->setTransparent(true);
-        }
-        if (startPassthrough) {
-            view->setPassthrough(true);
-        }
-    });
-
-    if (!container) {
-        ::log("ERROR: initWGPUView dispatch_sync completed but container is null");
-        return nullptr;
-    }
-
-    container->AddAbstractView(view);
-
-    {
-        std::lock_guard<std::mutex> lock(g_abstractViewsMutex);
-        g_abstractViews[webviewId] = view.get();
-    }
-
-    return view.get();
-}
 
 ELECTROBUN_EXPORT MyScriptMessageHandlerWithReply* addScriptMessageHandlerWithReply(WKWebView *webView,
                                                               uint32_t webviewId,
@@ -5834,52 +5632,6 @@ ELECTROBUN_EXPORT void loadURLInWebView(AbstractView *abstractView, const char *
     // Use virtual method which handles threading and implementation details
     
     abstractView->loadURL(urlString);
-}
-
-ELECTROBUN_EXPORT void wgpuViewSetFrame(AbstractView *abstractView, double x, double y, double width, double height) {
-    if (!abstractView) return;
-    RECT bounds = {(LONG)x, (LONG)y, (LONG)(x + width), (LONG)(y + height)};
-    abstractView->storePendingResize(bounds, "");
-    g_pendingResizeQueue.enqueue(abstractView);
-    schedulePendingResizeDrain();
-}
-
-ELECTROBUN_EXPORT void wgpuViewSetTransparent(AbstractView *abstractView, BOOL transparent) {
-    if (!abstractView) return;
-    MainThreadDispatcher::dispatch_sync([abstractView, transparent]() {
-        abstractView->setTransparent(transparent);
-    });
-}
-
-ELECTROBUN_EXPORT void wgpuViewSetPassthrough(AbstractView *abstractView, BOOL enablePassthrough) {
-    if (!abstractView) return;
-    MainThreadDispatcher::dispatch_sync([abstractView, enablePassthrough]() {
-        abstractView->setPassthrough(enablePassthrough);
-    });
-}
-
-ELECTROBUN_EXPORT void wgpuViewSetHidden(AbstractView *abstractView, BOOL hidden) {
-    if (!abstractView) return;
-    MainThreadDispatcher::dispatch_sync([abstractView, hidden]() {
-        abstractView->setHidden(hidden);
-    });
-}
-
-ELECTROBUN_EXPORT void wgpuViewRemove(AbstractView *abstractView) {
-    if (!abstractView) return;
-    uint32_t viewId = abstractView->webviewId;
-    MainThreadDispatcher::dispatch_sync([abstractView]() {
-        abstractView->remove();
-    });
-    {
-        std::lock_guard<std::mutex> lock(g_abstractViewsMutex);
-        g_abstractViews.erase(viewId);
-    }
-}
-
-ELECTROBUN_EXPORT void* wgpuViewGetNativeHandle(AbstractView *abstractView) {
-    if (!abstractView) return nullptr;
-    return abstractView->hwnd;
 }
 
 
@@ -6216,6 +5968,9 @@ ELECTROBUN_EXPORT HWND createWindowWithFrameAndStyleFromWorker(
         if (hwnd) {
             // Store our data with the window
             SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)data);
+
+            // Set app icon on taskbar and title bar
+            applyAppIcon(hwnd);
 
             // Register for NativeDisplayWindow DWM thumbnail lookup
             g_windowIdToHwnd[windowId] = hwnd;
@@ -6644,6 +6399,7 @@ ELECTROBUN_EXPORT HWND createNativeDisplayWindow(
         );
         if (hwnd) {
             g_displayWindows[displayWindowId] = hwnd;
+            applyAppIcon(hwnd);
             ShowWindow(hwnd, SW_SHOW);
             UpdateWindow(hwnd);
         }
@@ -9254,10 +9010,4 @@ extern "C" ELECTROBUN_EXPORT void setDockIconVisible(bool visible) {
 extern "C" ELECTROBUN_EXPORT bool isDockIconVisible() {
     // Not supported on Windows
     return true;
-}
-
-// Window icon - Linux only, no-op for Windows
-extern "C" ELECTROBUN_EXPORT void setWindowIcon(void* window, const char* iconPath) {
-    // Not yet implemented on Windows
-    // TODO: Implement using SetWindowIcon/LoadImage APIs
 }

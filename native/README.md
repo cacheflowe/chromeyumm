@@ -9,6 +9,7 @@ This directory holds the C++ source and vendor libraries for the Chromeyumm CEF 
 | `cef-wrapper.cpp` | `package/src/native/win/nativeWrapper.cpp` | Main CEF/D3D/Spout wrapper DLL |
 | `cef-helper.cpp`  | `package/src/native/win/cef_process_helper_win.cpp` | CEF renderer helper (Spout input V8 bindings) |
 | `shared/`         | `package/src/native/shared/` (subset) | Cross-platform headers used by cef-wrapper.cpp |
+| `app.ico`         | — | Application icon (32x32, loaded at window creation by `getAppIcon()`) |
 
 ### Files to copy from the Electrobun repo
 
@@ -38,12 +39,6 @@ cp -r package/src/native/shared/ ../chrome-yumm/native/shared/
 - `ffi_helpers.h`         — FFI marshal helpers
 - `config.h`              — config structs
 - `pending_resize_queue.h`— OSR resize queue
-
-#### Shared headers to skip
-
-- `json_menu_parser.h`  — native menus (not used)
-- `webview_storage.h`   — unused, can be removed
-- `download_event.h`    — optional, keep if you want download events
 
 ## Vendor directories (NOT committed — gitignored)
 

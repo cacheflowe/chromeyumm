@@ -2,15 +2,7 @@
 
 ## Current Focus
 
-### Strip Electrobun Heritage Code
-Remove ~900 lines of unused code from `cef-wrapper.cpp`:
-- ASAR reading (~200 lines)
-- WGPU shims (~400 lines, already `#ifdef`'d)
-- Update/packaging machinery (~300 lines)
-
-Approach: strip section by section with a build test after each.
-
-See: [tech-debt-tracker.md](tech-debt-tracker.md)
+(No current focus — heritage stripping complete. See Backlog for next priorities.)
 
 ## Planned
 
@@ -23,10 +15,11 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 ## Backlog
 
 - Automated smoke test (DLL loads, FFI symbols resolve)
+  - Can we test video codes, webcam access, webgpu, serial device api, other related web features we want to ensure?
 - CI build pipeline (GitHub Actions, self-hosted runner for MSVC + CEF)
 - Crash/error logging to disk
 - Add automated system to pull latest Spout / CEF versions into codebase
-- CConvert ELECTROBUN references to Chromeyumm (e.g., `ELECTROBUN_VERSION` → `CHROMEYUMM_VERSION`)
+- Convert ELECTROBUN references to Chromeyumm (e.g., `ELECTROBUN_VERSION` → `CHROMEYUMM_VERSION`)
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
 
 ## Completed
@@ -41,6 +34,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - WebView2 removal (stripped all WebView2 code from cef-wrapper.cpp)
 - Spout + D3D multi-window coexistence (both output modes run simultaneously, sharing D3D device)
 - GitHub Releases (`scripts/release.ts` — tag, package, publish)
+- Strip Electrobun heritage code (WebView2 ~630 lines, WGPU shims ~295 lines, dead includes, orphaned headers)
 
 ## Related
 
