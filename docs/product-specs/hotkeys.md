@@ -4,7 +4,9 @@
 As a live visual artist, I want keyboard shortcuts to control the app during performances without a UI, so I can toggle modes, reload content, and quit without touching the mouse.
 
 ## Implementation
-Global shortcuts are registered via `GlobalShortcut.register()` in `src/app/index.ts`, which calls `native.symbols.registerGlobalShortcut()`. The C++ side uses `accelerator_parser.h` to parse accelerator strings and registers Win32 hotkeys.
+Global shortcuts are registered via `GlobalShortcut.register()` in `src/app/index.ts`, which calls `native.symbols.registerGlobalShortcut()`. The C++ side uses `accelerator_parser.h` to parse accelerator strings and registers Win32 hotkeys via `RegisterHotKey`.
+
+To avoid hijacking key combos from other applications, hotkeys are **suspended when the app loses focus** and **resumed when it regains focus**. This is implemented via a `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)` callback on the hotkey message loop thread that calls `UnregisterHotKey` / `RegisterHotKey` on focus transitions.
 
 ## Hotkey Map
 

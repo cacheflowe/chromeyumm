@@ -8535,9 +8535,19 @@ struct HotkeyRegisterData {
     HANDLE completionEvent;  // Signal when operation is complete
 };
 
+// Per-hotkey registration info so we can re-register after focus changes
+struct HotkeyRegistration {
+    int hotkeyId;
+    UINT modifiers;
+    UINT vkCode;
+    std::string accelerator;
+};
+
 // Storage for registered shortcuts: accelerator string -> hotkey ID
 static std::map<std::string, int> g_globalShortcuts;
 static std::map<int, std::string> g_hotkeyIdToAccelerator;
+static std::map<int, HotkeyRegistration> g_hotkeyRegistrations;  // hotkeyId -> registration data for re-register
+static bool g_hotkeysCurrentlyRegistered = false;  // true when OS-level hotkeys are active
 static int g_nextHotkeyId = 1;
 static HWND g_hotkeyWindow = NULL;
 static std::thread g_hotkeyThread;
@@ -8610,6 +8620,8 @@ static UINT parseModifiers(const std::string& accelerator, std::string& outKey) 
 // Window procedure for hotkey window
 static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (msg == WM_HOTKEY) {
+        // Hotkeys are only registered while our app has focus (see focus hook below),
+        // so no process ID check needed — if we get WM_HOTKEY, we're focused.
         int hotkeyId = (int)wParam;
         std::lock_guard<std::mutex> lock(g_hotkeyMutex);
         auto it = g_hotkeyIdToAccelerator.find(hotkeyId);
@@ -8625,6 +8637,14 @@ static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
             std::lock_guard<std::mutex> lock(g_hotkeyMutex);
             g_globalShortcuts[data->accelerator] = data->hotkeyId;
             g_hotkeyIdToAccelerator[data->hotkeyId] = data->accelerator;
+            // Store registration data for re-registering on focus gain
+            HotkeyRegistration reg;
+            reg.hotkeyId = data->hotkeyId;
+            reg.modifiers = data->modifiers;
+            reg.vkCode = data->vkCode;
+            reg.accelerator = data->accelerator;
+            g_hotkeyRegistrations[data->hotkeyId] = reg;
+            g_hotkeysCurrentlyRegistered = true;
             ::log("GlobalShortcut registered successfully: '" + data->accelerator + "' (id=" + std::to_string(data->hotkeyId) + ", total=" + std::to_string(g_globalShortcuts.size()) + ")");
         } else {
             DWORD error = GetLastError();
@@ -8637,6 +8657,10 @@ static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
     else if (msg == WM_UNREGISTER_HOTKEY) {
         int hotkeyId = (int)wParam;
         UnregisterHotKey(hwnd, hotkeyId);
+        {
+            std::lock_guard<std::mutex> lock(g_hotkeyMutex);
+            g_hotkeyRegistrations.erase(hotkeyId);
+        }
         return 0;
     }
     else if (msg == WM_UNREGISTER_ALL_HOTKEYS) {
@@ -8646,10 +8670,54 @@ static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
         }
         g_globalShortcuts.clear();
         g_hotkeyIdToAccelerator.clear();
+        g_hotkeyRegistrations.clear();
+        g_hotkeysCurrentlyRegistered = false;
         ::log("GlobalShortcut: Unregistered all shortcuts");
         return 0;
     }
     return DefWindowProc(hwnd, msg, wParam, lParam);
+}
+
+// Suspend hotkeys at the OS level (unregister without clearing our maps).
+// Called when the app loses focus so other apps can use those key combos.
+static void suspendHotkeys() {
+    if (!g_hotkeyWindow) return;
+    std::lock_guard<std::mutex> lock(g_hotkeyMutex);
+    if (!g_hotkeysCurrentlyRegistered) return;
+    for (const auto& pair : g_hotkeyRegistrations) {
+        UnregisterHotKey(g_hotkeyWindow, pair.first);
+    }
+    g_hotkeysCurrentlyRegistered = false;
+    ::log("GlobalShortcut: Suspended (app lost focus, " + std::to_string(g_hotkeyRegistrations.size()) + " hotkeys)");
+}
+
+// Resume hotkeys at the OS level (re-register from stored data).
+// Called when the app gains focus.
+static void resumeHotkeys() {
+    if (!g_hotkeyWindow) return;
+    std::lock_guard<std::mutex> lock(g_hotkeyMutex);
+    if (g_hotkeysCurrentlyRegistered) return;
+    for (const auto& pair : g_hotkeyRegistrations) {
+        const HotkeyRegistration& reg = pair.second;
+        RegisterHotKey(g_hotkeyWindow, reg.hotkeyId, reg.modifiers, reg.vkCode);
+    }
+    g_hotkeysCurrentlyRegistered = true;
+    ::log("GlobalShortcut: Resumed (app gained focus, " + std::to_string(g_hotkeyRegistrations.size()) + " hotkeys)");
+}
+
+// WinEvent hook callback — monitors foreground window changes to suspend/resume hotkeys
+static void CALLBACK ForegroundChangeProc(
+    HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd,
+    LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime)
+{
+    if (event != EVENT_SYSTEM_FOREGROUND) return;
+    DWORD fgPid = 0;
+    if (hwnd) GetWindowThreadProcessId(hwnd, &fgPid);
+    if (fgPid == GetCurrentProcessId()) {
+        resumeHotkeys();
+    } else {
+        suspendHotkeys();
+    }
 }
 
 // Message loop thread for hotkey window
@@ -8671,11 +8739,21 @@ static void hotkeyMessageLoop() {
         return;
     }
 
+    // Install a WinEvent hook to monitor foreground window changes.
+    // When our app loses focus, we unregister all hotkeys so other apps
+    // can use those key combos. When we regain focus, we re-register them.
+    HWINEVENTHOOK hFocusHook = SetWinEventHook(
+        EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
+        NULL, ForegroundChangeProc, 0, 0,
+        WINEVENT_OUTOFCONTEXT);
+
     MSG msg;
     while (g_hotkeyThreadRunning && GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+
+    if (hFocusHook) UnhookWinEvent(hFocusHook);
 
     DestroyWindow(g_hotkeyWindow);
     g_hotkeyWindow = NULL;

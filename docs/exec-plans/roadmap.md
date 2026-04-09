@@ -21,6 +21,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - Add automated system to pull latest Spout / CEF versions into codebase
 - Convert ELECTROBUN references to Chromeyumm (e.g., `ELECTROBUN_VERSION` → `CHROMEYUMM_VERSION`)
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
+- Replace `RegisterHotKey` with window-level accelerators (`TranslateAccelerator` or `WM_KEYDOWN`) — current global hotkeys are gated by a process ID check, but the proper fix is to not use global hotkeys for app-local shortcuts
 
 ## Completed
 
