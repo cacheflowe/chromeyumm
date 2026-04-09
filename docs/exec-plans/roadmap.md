@@ -28,6 +28,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - Automated smoke test (DLL loads, FFI symbols resolve)
 - CI build pipeline (GitHub Actions, self-hosted runner for MSVC + CEF)
 - Crash/error logging to disk
+- Add automated system to pull latest Spout / CEF versions into codebase
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
 
 ## Completed

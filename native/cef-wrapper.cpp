@@ -2454,7 +2454,6 @@ public:
 
 // Forward declare helper functions
 std::string getMimeTypeForFile(const std::string& path);
-void updateActiveWebviewForMousePosition(ContainerView* container, POINT mousePos);
 
 void log(const std::string& message) {
     // Get current time
@@ -6912,7 +6911,11 @@ ELECTROBUN_EXPORT bool startD3DOutput(uint32_t webviewId) {
         }
     } else {
         // Spout sender already initialized the D3D device — reuse it for NDW blitting.
-        ::log("D3DOutput: reusing Spout D3D11 device for webviewId " + std::to_string(webviewId));
+        // state.sender != nullptr confirms this is the Spout coexistence path (not an unexpected double-call).
+        if (state.sender)
+            ::log("D3DOutput: reusing Spout D3D11 device for webviewId " + std::to_string(webviewId));
+        else
+            ::log("D3DOutput: startD3DOutput called while already active (unexpected) — reinitializing slot list only");
     }
 
     // Tell CEF to keep rendering even when the host HWND is hidden.
@@ -6992,14 +6995,21 @@ ELECTROBUN_EXPORT void stopD3DOutput(uint32_t webviewId) {
         g_d3dOutputStates.erase(itD3D);
     }
 
-    // Release the SpoutWindowState device (same as stopSpoutSender without SpoutDX cleanup).
+    // Release the SpoutWindowState device, but only if Spout is NOT also active.
+    // When both Spout and D3D output are running, Spout owns state.d3dDevice/swapChain/context
+    // and will release them when stopSpoutSender is called. Releasing here would invalidate
+    // the Spout sender mid-session.
     auto spoutIt = g_spoutWindows.find(webviewId);
     if (spoutIt != g_spoutWindows.end()) {
         auto& state = spoutIt->second;
         state.active = false;
-        if (state.swapChain) { state.swapChain->Release(); state.swapChain = nullptr; }
-        if (state.d3dContext) { state.d3dContext->Release(); state.d3dContext = nullptr; }
-        if (state.d3dDevice)  { state.d3dDevice->Release();  state.d3dDevice  = nullptr; }
+        if (!state.sender) {
+            // D3D-output-only mode: we own the device, release it.
+            if (state.swapChain) { state.swapChain->Release(); state.swapChain = nullptr; }
+            if (state.d3dContext) { state.d3dContext->Release(); state.d3dContext = nullptr; }
+            if (state.d3dDevice)  { state.d3dDevice->Release();  state.d3dDevice  = nullptr; }
+        }
+        // else: Spout owns the device; stopSpoutSender will release it.
     }
 
     ::log("D3DOutput: stopped for webviewId " + std::to_string(webviewId));
