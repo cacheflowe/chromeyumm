@@ -4,13 +4,13 @@
 // This is a header-only implementation to avoid build complexity.
 // Supports * wildcard only, case-insensitive matching.
 
-#ifndef ELECTROBUN_GLOB_MATCH_H
-#define ELECTROBUN_GLOB_MATCH_H
+#ifndef CHROMEYUMM_GLOB_MATCH_H
+#define CHROMEYUMM_GLOB_MATCH_H
 
 #include <string>
 #include <cctype>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Simple case-insensitive glob matcher (supports * wildcard only)
 // Returns true if text matches the glob pattern
@@ -54,6 +54,6 @@ inline bool globMatch(const std::string& pattern, const std::string& text) {
     return p == pattern.size();
 }
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_GLOB_MATCH_H
+#endif // CHROMEYUMM_GLOB_MATCH_H

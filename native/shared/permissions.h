@@ -4,8 +4,8 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_PERMISSIONS_H
-#define ELECTROBUN_PERMISSIONS_H
+#ifndef CHROMEYUMM_PERMISSIONS_H
+#define CHROMEYUMM_PERMISSIONS_H
 
 #include <string>
 #include <map>
@@ -13,7 +13,7 @@
 #include <mutex>
 #include <utility>
 
-namespace electrobun {
+namespace chromeyumm {
 
 enum class PermissionType {
     USER_MEDIA,
@@ -108,6 +108,6 @@ inline void cachePermission(const std::string& origin, PermissionType type, Perm
     PermissionCache::getInstance().set(origin, type, status);
 }
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_PERMISSIONS_H
+#endif // CHROMEYUMM_PERMISSIONS_H

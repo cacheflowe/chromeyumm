@@ -5,8 +5,8 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_CHROMIUM_FLAGS_H
-#define ELECTROBUN_CHROMIUM_FLAGS_H
+#ifndef CHROMEYUMM_CHROMIUM_FLAGS_H
+#define CHROMEYUMM_CHROMIUM_FLAGS_H
 
 #include <string>
 #include <vector>
@@ -19,7 +19,7 @@
 // pulling in the full CEF headers (the call sites already include them).
 #include "include/cef_command_line.h"
 
-namespace electrobun {
+namespace chromeyumm {
 
 struct ChromiumFlag {
     std::string name;
@@ -47,7 +47,7 @@ inline std::string readFileToString(const std::string& path) {
 // Handles three value types:
 //   "flag-name": true        -> add switch (hasValue = false)
 //   "flag-name": "value"     -> add switch with value (hasValue = true)
-//   "flag-name": false       -> skip a default flag set by Electrobun
+//   "flag-name": false       -> skip a default flag set by Chromeyumm
 inline ChromiumFlagConfig parseChromiumFlags(const std::string& json) {
     ChromiumFlagConfig config;
 
@@ -181,6 +181,6 @@ inline void applyChromiumFlags(const ChromiumFlagConfig& config,
     }
 }
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_CHROMIUM_FLAGS_H
+#endif // CHROMEYUMM_CHROMIUM_FLAGS_H

@@ -4,12 +4,12 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_MIME_TYPES_H
-#define ELECTROBUN_MIME_TYPES_H
+#ifndef CHROMEYUMM_MIME_TYPES_H
+#define CHROMEYUMM_MIME_TYPES_H
 
 #include <string>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Get MIME type from a URL or file path based on extension
 // Returns "application/octet-stream" as default for unknown types
@@ -96,6 +96,6 @@ inline std::string getMimeTypeFromUrl(const std::string& url) {
     return "application/octet-stream"; // default
 }
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_MIME_TYPES_H
+#endif // CHROMEYUMM_MIME_TYPES_H

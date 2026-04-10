@@ -4,15 +4,15 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_SHUTDOWN_GUARD_H
-#define ELECTROBUN_SHUTDOWN_GUARD_H
+#ifndef CHROMEYUMM_SHUTDOWN_GUARD_H
+#define CHROMEYUMM_SHUTDOWN_GUARD_H
 
 #include <atomic>
 #include <mutex>
 #include <thread>
 #include <chrono>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Singleton for managing global shutdown state
 // Allows code to check if shutdown is in progress and avoid race conditions
@@ -129,6 +129,6 @@ inline void initiateShutdown() {
     ShutdownManager::getInstance().initiateShutdown();
 }
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_SHUTDOWN_GUARD_H
+#endif // CHROMEYUMM_SHUTDOWN_GUARD_H

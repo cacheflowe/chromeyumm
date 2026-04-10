@@ -4,14 +4,14 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_FFI_HELPERS_H
-#define ELECTROBUN_FFI_HELPERS_H
+#ifndef CHROMEYUMM_FFI_HELPERS_H
+#define CHROMEYUMM_FFI_HELPERS_H
 
 #include <string>
 #include <cstring>
 #include <cstdlib>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Create a copy of a string for FFI callbacks
 // The returned string is allocated with malloc/strdup and must be freed by the caller
@@ -127,13 +127,13 @@ public:
 
     // Create FFI string (caller must free)
     char* createFFIString() const {
-        return electrobun::createFFIString(data_);
+        return chromeyumm::createFFIString(data_);
     }
 
 private:
     std::string data_;
 };
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_FFI_HELPERS_H
+#endif // CHROMEYUMM_FFI_HELPERS_H

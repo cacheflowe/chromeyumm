@@ -124,9 +124,9 @@ This is `nativeWrapper.cpp` from the Electrobun fork, all additions are preserve
 - Always `use-angle=d3d11` — required for OSR `shared_texture_enabled=1`. VIZ OOM crash occurs with `gl` or `vulkan` in OSR mode.
 - `disable-features=VizDisplayCompositor` was **removed** — crashes GPU process in CEF 145+.
 
-**WGPU guard** (`#ifdef ELECTROBUN_HAS_WGPU`)
-- `#include "dawn/webgpu.h"` and the WGPU shims section are wrapped in `#ifdef ELECTROBUN_HAS_WGPU`
-- `build.ts` sets `/DELECTROBUN_HAS_WGPU` only if `native/vendor/wgpu/win-x64/include` exists
+**WGPU guard** (`#ifdef CHROMEYUMM_HAS_WGPU`)
+- `#include "dawn/webgpu.h"` and the WGPU shims section are wrapped in `#ifdef CHROMEYUMM_HAS_WGPU`
+- `build.ts` sets `/DCHROMEYUMM_HAS_WGPU` only if `native/vendor/wgpu/win-x64/include` exists
 - This prevents a build failure when the wgpu vendor is absent (upstream added it unconditionally)
 
 ### cef-helper.cpp (native/cef-helper.cpp)
@@ -219,9 +219,9 @@ bun scripts/setup-vendors.ts
 
 ## chromeyumm Framework (src/chromeyumm/)
 
-This is the TypeScript layer that replaces `electrobun/bun`. It's intentionally minimal — only the FFI symbols and class wrappers actually used by this app.
+This is the TypeScript framework layer. It's intentionally minimal — only the FFI symbols and class wrappers actually used by this app.
 
-**Key design choices vs Electrobun:**
+**Key design choices:**
 - No `ffi.request` abstraction — everything calls `native.symbols.*` directly
 - No cross-platform guards (`process.platform !== "win32"` checks gone)
 - No RPC system — `nullCallback` passed for `bunBridgePostmessageHandler` and `internalBridgeHandler`

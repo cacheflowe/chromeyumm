@@ -28,9 +28,9 @@ export class Webview {
     // Minimal preload: sets the webview/window IDs and the event bridge reference.
     // The event bridge itself is injected by CEF's OnContextCreated; we just alias it.
     const preload =
-      `window.__electrobunWebviewId=${this.id};` +
-      `window.__electrobunWindowId=${windowId};` +
-      `window.__electrobunEventBridge=window.__electrobunEventBridge||window.eventBridge;`;
+      `window.__chromeyummWebviewId=${this.id};` +
+      `window.__chromeyummWindowId=${windowId};` +
+      `window.__chromeyummEventBridge=window.__chromeyummEventBridge||window.eventBridge;`;
 
     native.symbols.setNextWebviewFlags(false, false);
 

@@ -3,14 +3,14 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_PRELOAD_SCRIPT_H
-#define ELECTROBUN_PRELOAD_SCRIPT_H
+#ifndef CHROMEYUMM_PRELOAD_SCRIPT_H
+#define CHROMEYUMM_PRELOAD_SCRIPT_H
 
 #include <string>
 #include <map>
 #include <mutex>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Represents a preload script to be injected into webviews
 struct PreloadScript {
@@ -66,6 +66,6 @@ private:
     std::map<int, std::string> scripts_;
 };
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_PRELOAD_SCRIPT_H
+#endif // CHROMEYUMM_PRELOAD_SCRIPT_H

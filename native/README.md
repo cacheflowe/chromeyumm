@@ -11,7 +11,7 @@ This directory holds the C++ source and vendor libraries for the Chromeyumm CEF 
 | `shared/`         | `package/src/native/shared/` (subset) | Cross-platform headers used by cef-wrapper.cpp |
 | `app.ico`         | — | Application icon (32x32, loaded at window creation by `getAppIcon()`) |
 
-### Files to copy from the Electrobun repo
+### Original files (from Electrobun fork, now fully owned)
 
 ```
 # From package/src/native/win/
@@ -124,7 +124,7 @@ native/vendor/spout/
 ```
 
 If `SpoutDX_static.lib` is absent, `build.ts` builds without Spout support
-(`#ifdef ELECTROBUN_HAS_SPOUT` guard in cef-wrapper.cpp).
+(`#ifdef CHROMEYUMM_HAS_SPOUT` guard in cef-wrapper.cpp).
 
 ## CEF version upgrades
 

@@ -3,12 +3,12 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_CALLBACKS_H
-#define ELECTROBUN_CALLBACKS_H
+#ifndef CHROMEYUMM_CALLBACKS_H
+#define CHROMEYUMM_CALLBACKS_H
 
 #include <cstdint>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Webview navigation and event callbacks
 // NOTE: Bun's FFIType.true doesn't play well with Objective-C's YES/NO char booleans
@@ -49,6 +49,6 @@ typedef void (*QuitRequestedHandler)();
 typedef const char* (*GetMimeType)(const char* filePath);
 typedef const char* (*GetHTMLForWebviewSync)(uint32_t webviewId);
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_CALLBACKS_H
+#endif // CHROMEYUMM_CALLBACKS_H

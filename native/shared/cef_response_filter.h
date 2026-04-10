@@ -5,44 +5,44 @@
 // This is a header-only implementation to avoid build complexity.
 // Requires CEF headers to be included before this file.
 
-#ifndef ELECTROBUN_CEF_RESPONSE_FILTER_H
-#define ELECTROBUN_CEF_RESPONSE_FILTER_H
+#ifndef CHROMEYUMM_CEF_RESPONSE_FILTER_H
+#define CHROMEYUMM_CEF_RESPONSE_FILTER_H
 
 #include <string>
 #include <algorithm>
 #include <cstring>
 #include "preload_script.h"
 
-namespace electrobun {
+namespace chromeyumm {
 
 // CEF Response Filter that injects preload scripts into HTML responses
 // Injection happens right after <head> tag to ensure scripts run before page scripts
-class ElectrobunResponseFilter : public CefResponseFilter {
+class ChromeyummResponseFilter : public CefResponseFilter {
 private:
     std::string buffer_;
     bool injected_;
-    PreloadScript electrobun_script_;
+    PreloadScript chromeyumm_script_;
     PreloadScript custom_script_;
 
 public:
     // Constructor with PreloadScript structs (preferred)
-    ElectrobunResponseFilter(const PreloadScript& electrobunScript,
+    ChromeyummResponseFilter(const PreloadScript& chromeyummScript,
                             const PreloadScript& customScript)
         : injected_(false),
-          electrobun_script_(electrobunScript),
+          chromeyumm_script_(chromeyummScript),
           custom_script_(customScript) {}
 
     // Constructor with raw strings (for compatibility)
-    ElectrobunResponseFilter(const std::string& electrobunScript,
+    ChromeyummResponseFilter(const std::string& chromeyummScript,
                             const std::string& customScript = "")
         : injected_(false),
-          electrobun_script_(electrobunScript),
+          chromeyumm_script_(chromeyummScript),
           custom_script_(customScript) {}
 
     // Single script constructor (for simpler use cases)
-    explicit ElectrobunResponseFilter(const std::string& script)
+    explicit ChromeyummResponseFilter(const std::string& script)
         : injected_(false),
-          electrobun_script_(script) {}
+          chromeyumm_script_(script) {}
 
     bool InitFilter() override {
         buffer_.clear();
@@ -58,7 +58,7 @@ public:
                        size_t& data_out_written) override {
 
         // If no scripts to inject, pass through directly
-        if (electrobun_script_.empty() && custom_script_.empty()) {
+        if (chromeyumm_script_.empty() && custom_script_.empty()) {
             size_t copy_size = std::min(data_in_size, data_out_size);
             std::memcpy(data_out, data_in, copy_size);
             data_in_read = copy_size;
@@ -137,14 +137,14 @@ private:
     }
 
     std::string BuildScriptTag() const {
-        if (electrobun_script_.empty() && custom_script_.empty()) {
+        if (chromeyumm_script_.empty() && custom_script_.empty()) {
             return "";
         }
 
         std::string result = "<script>\n";
 
-        if (!electrobun_script_.empty()) {
-            result += electrobun_script_.code;
+        if (!chromeyumm_script_.empty()) {
+            result += chromeyumm_script_.code;
             result += "\n";
         }
 
@@ -181,9 +181,9 @@ private:
         return buffer_.empty() ? RESPONSE_FILTER_DONE : RESPONSE_FILTER_NEED_MORE_DATA;
     }
 
-    IMPLEMENT_REFCOUNTING(ElectrobunResponseFilter);
+    IMPLEMENT_REFCOUNTING(ChromeyummResponseFilter);
 };
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_CEF_RESPONSE_FILTER_H
+#endif // CHROMEYUMM_CEF_RESPONSE_FILTER_H

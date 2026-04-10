@@ -172,7 +172,7 @@ public:
         CefRefPtr<CefV8Value> eventBridge = CefV8Value::CreateObject(nullptr, nullptr);
         CefRefPtr<CefV8Value> eventPostMessage = CreatePostMessageFunction(browser, "EventBridgeMessage");
         eventBridge->SetValue("postMessage", eventPostMessage, V8_PROPERTY_ATTRIBUTE_NONE);
-        window->SetValue("__electrobunEventBridge", eventBridge, V8_PROPERTY_ATTRIBUTE_NONE);
+        window->SetValue("__chromeyummEventBridge", eventBridge, V8_PROPERTY_ATTRIBUTE_NONE);
 
         // Only create bunBridge and internalBridge for non-sandboxed webviews
         if (!is_sandboxed) {
@@ -180,13 +180,13 @@ public:
             CefRefPtr<CefV8Value> bunBridge = CefV8Value::CreateObject(nullptr, nullptr);
             CefRefPtr<CefV8Value> bunPostMessage = CreatePostMessageFunction(browser, "BunBridgeMessage");
             bunBridge->SetValue("postMessage", bunPostMessage, V8_PROPERTY_ATTRIBUTE_NONE);
-            window->SetValue("__electrobunBunBridge", bunBridge, V8_PROPERTY_ATTRIBUTE_NONE);
+            window->SetValue("__chromeyummBunBridge", bunBridge, V8_PROPERTY_ATTRIBUTE_NONE);
 
             // Create internalBridge - internal RPC bridge
             CefRefPtr<CefV8Value> internalBridge = CefV8Value::CreateObject(nullptr, nullptr);
             CefRefPtr<CefV8Value> internalPostMessage = CreatePostMessageFunction(browser, "internalMessage");
             internalBridge->SetValue("postMessage", internalPostMessage, V8_PROPERTY_ATTRIBUTE_NONE);
-            window->SetValue("__electrobunInternalBridge", internalBridge, V8_PROPERTY_ATTRIBUTE_NONE);
+            window->SetValue("__chromeyummInternalBridge", internalBridge, V8_PROPERTY_ATTRIBUTE_NONE);
         }
 
         // Expose Spout shared memory to the renderer for the main frame.

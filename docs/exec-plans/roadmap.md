@@ -18,7 +18,6 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - Crash/error logging to disk
 - Glitching - frames out of sync, stutters, etc. — investigate causes and mitigations (e.g. frame pacing, throttling, etc.). Seems to happen when hovering over Windows task bar preview. Seems to calm down when Chromeyumm window is focused, but not fully solved.
 - Add automated system to pull latest Spout / CEF versions into codebase
-- Convert ELECTROBUN references to Chromeyumm (e.g., `ELECTROBUN_VERSION` → `CHROMEYUMM_VERSION`)
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
 - Replace `RegisterHotKey` with window-level accelerators (`TranslateAccelerator` or `WM_KEYDOWN`) — current approach suspends/resumes hotkeys on focus change which works well, but window-level shortcuts would be architecturally cleaner
 
@@ -36,6 +35,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - GitHub Releases (`scripts/release.ts` — tag, package, publish)
 - Strip Electrobun heritage code (WebView2 ~630 lines, WGPU shims ~295 lines, dead includes, orphaned headers)
 - Consolidated Debug Panel (merged `<slot-overlay>` into `<debug-panel>`, data-driven hotkeys, auto-injection, `window.__chromeyumm` state object)
+- Convert ELECTROBUN references to Chromeyumm — renamed C++ class names, macros, include guards, namespaces, JS bridge globals, and TS identifiers. Historical docs preserved.
 
 ## Related
 

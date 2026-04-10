@@ -4,8 +4,8 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_WEBVIEW_STORAGE_H
-#define ELECTROBUN_WEBVIEW_STORAGE_H
+#ifndef CHROMEYUMM_WEBVIEW_STORAGE_H
+#define CHROMEYUMM_WEBVIEW_STORAGE_H
 
 #include <string>
 #include <map>
@@ -13,7 +13,7 @@
 #include <cstdint>
 #include <cstring>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Thread-safe storage for webview HTML content
 // Replaces the duplicated webviewHTMLContent maps across platforms
@@ -86,6 +86,6 @@ inline const char* getWebviewHTMLContentShared(uint32_t webviewId) {
     return WebviewContentStorage::getInstance().getContentForFFI(webviewId);
 }
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_WEBVIEW_STORAGE_H
+#endif // CHROMEYUMM_WEBVIEW_STORAGE_H

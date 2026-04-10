@@ -54,7 +54,7 @@
 #include "shared/accelerator_parser.h"
 #include "shared/chromium_flags.h"
 
-using namespace electrobun;
+using namespace chromeyumm;
 
 
 // Push macro definitions to avoid conflicts with Windows headers
@@ -93,13 +93,13 @@ using namespace electrobun;
 #include "vendor/spout/include/SpoutDX/SpoutDX.h"
 #include <d3d11_1.h>    // ID3D11Device1::OpenSharedResource1 (for DXGI NT handles)
 #include <dxgi1_2.h>    // IDXGIFactory2, IDXGISwapChain1 (for DWM swap chain)
-#define ELECTROBUN_HAS_SPOUT 1
+#define CHROMEYUMM_HAS_SPOUT 1
 
 #else
 // SpoutDX not found — forward-declare stub so pointers in structs compile.
 // Spout output will not be available; startSpoutSender() will return false.
 class spoutDX;
-#define ELECTROBUN_HAS_SPOUT 0
+#define CHROMEYUMM_HAS_SPOUT 0
 #endif
 
 // Link required Windows libraries
@@ -119,7 +119,7 @@ class spoutDX;
 
 
 // Ensure the exported functions have appropriate visibility
-#define ELECTROBUN_EXPORT __declspec(dllexport)
+#define CHROMEYUMM_EXPORT __declspec(dllexport)
 #define WM_EXECUTE_SYNC_BLOCK (WM_USER + 1)
 #define WM_EXECUTE_ASYNC_BLOCK (WM_USER + 2)
 #define WM_DEVTOOLS_CREATE (WM_USER + 3)
@@ -134,7 +134,7 @@ class MyScriptMessageHandlerWithReply;
 class StatusItemTarget;
 
 // CEF function declarations
-ELECTROBUN_EXPORT bool isCEFAvailable();
+CHROMEYUMM_EXPORT bool isCEFAvailable();
 
 // Type definitions to match macOS types
 typedef double CGFloat;
@@ -344,9 +344,9 @@ static GetMimeType g_getMimeType = nullptr;
 static GetHTMLForWebviewSync g_getHTMLForWebviewSync = nullptr;
 
 // Global variables for CEF cache path isolation
-static std::string g_electrobunChannel = "";
-static std::string g_electrobunIdentifier = "";
-static std::string g_electrobunName = "";
+static std::string g_chromeyummChannel = "";
+static std::string g_chromeyummIdentifier = "";
+static std::string g_chromeyummName = "";
 
 // Webview content storage (replaces JSCallback approach)
 static std::map<uint32_t, std::string> webviewHTMLContent;
@@ -363,8 +363,8 @@ static std::mutex g_abstractViewsMutex;
 bool checkNavigationRules(AbstractView* view, const std::string& url);
 
 // Forward declarations for HTML content management
-extern "C" ELECTROBUN_EXPORT const char* getWebviewHTMLContent(uint32_t webviewId);
-extern "C" ELECTROBUN_EXPORT void setWebviewHTMLContent(uint32_t webviewId, const char* htmlContent);
+extern "C" CHROMEYUMM_EXPORT const char* getWebviewHTMLContent(uint32_t webviewId);
+extern "C" CHROMEYUMM_EXPORT void setWebviewHTMLContent(uint32_t webviewId, const char* htmlContent);
 
 // Global mutex to serialize webview creation
 static std::mutex g_webviewCreationMutex;
@@ -450,7 +450,7 @@ static int FindAvailableRemoteDebugPort(int startPort, int endPort) {
 // CEF global variables
 static bool g_cef_initialized = false;
 static CefRefPtr<CefApp> g_cef_app;
-static electrobun::ChromiumFlagConfig g_userChromiumFlags;
+static chromeyumm::ChromiumFlagConfig g_userChromiumFlags;
 static HANDLE g_job_object = nullptr;  // Job object to track all child processes
 
 // Quit/shutdown coordination
@@ -465,7 +465,7 @@ static HANDLE g_eventLoopReadyEvent = NULL;
 #define WM_CEF_SCHEDULE_WORK (WM_USER + 100)
 static HWND g_cefPumpWindow = NULL;
 
-class ElectrobunCefApp : public CefApp, public CefBrowserProcessHandler {
+class ChromeyummCefApp : public CefApp, public CefBrowserProcessHandler {
 public:
     CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override {
         return this;
@@ -488,38 +488,38 @@ public:
 
     void OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line) override {
         // Windows default flags — can be overridden via chromiumFlags in config
-        static const std::vector<electrobun::DefaultFlag> defaults = {
+        static const std::vector<chromeyumm::DefaultFlag> defaults = {
             {"in-process-gpu", ""},
             {"disable-web-security", ""},
             {"disable-features=VizDisplayCompositor", ""},
             {"remote-allow-origins", "*"},
             {"allow-insecure-localhost", ""},
         };
-        electrobun::applyDefaultFlags(defaults, g_userChromiumFlags.skip, command_line);
+        chromeyumm::applyDefaultFlags(defaults, g_userChromiumFlags.skip, command_line);
 
         // Apply user-defined chromium flags from build.json
-        electrobun::applyChromiumFlags(g_userChromiumFlags, command_line);
+        chromeyumm::applyChromiumFlags(g_userChromiumFlags, command_line);
     }
 
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunCefApp);
+    IMPLEMENT_REFCOUNTING(ChromeyummCefApp);
 };
 
 // Forward declaration for CEF client (needed for load handler)
-class ElectrobunCefClient;
+class ChromeyummCefClient;
 
 // CEF Load Handler for debugging navigation
-class ElectrobunLoadHandler : public CefLoadHandler {
+class ChromeyummLoadHandler : public CefLoadHandler {
 public:
     uint32_t webview_id_ = 0;
     WebviewEventHandler webview_event_handler_ = nullptr;
-    CefRefPtr<ElectrobunCefClient> client_ = nullptr;
+    CefRefPtr<ChromeyummCefClient> client_ = nullptr;
 
-    ElectrobunLoadHandler() {}
+    ChromeyummLoadHandler() {}
 
     void SetWebviewId(uint32_t id) { webview_id_ = id; }
     void SetWebviewEventHandler(WebviewEventHandler handler) { webview_event_handler_ = handler; }
-    void SetClient(CefRefPtr<ElectrobunCefClient> client) { client_ = client; }
+    void SetClient(CefRefPtr<ChromeyummCefClient> client) { client_ = client; }
 
     void OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transition_type) override;
     void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) override;
@@ -530,18 +530,18 @@ public:
     }
 
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunLoadHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummLoadHandler);
 };
 
 // Global map to store CEF clients for browser connection
-static std::map<HWND, CefRefPtr<ElectrobunCefClient>> g_cefClients;
+static std::map<HWND, CefRefPtr<ChromeyummCefClient>> g_cefClients;
 
 // Forward declaration for helper functions (defined after class definitions)
-void SetBrowserOnClient(CefRefPtr<ElectrobunCefClient> client, CefRefPtr<CefBrowser> browser);
+void SetBrowserOnClient(CefRefPtr<ChromeyummCefClient> client, CefRefPtr<CefBrowser> browser);
 void SetBrowserOnCEFView(HWND parentWindow, CefRefPtr<CefBrowser> browser);
 
 // CEF Life Span Handler for async browser creation
-class ElectrobunLifeSpanHandler : public CefLifeSpanHandler {
+class ChromeyummLifeSpanHandler : public CefLifeSpanHandler {
 public:
     void OnAfterCreated(CefRefPtr<CefBrowser> browser) override {
         // Note: Browser setup is now handled synchronously during CreateBrowserSync
@@ -585,11 +585,11 @@ public:
     }
 
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunLifeSpanHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummLifeSpanHandler);
 };
 
 // Forward declaration for DevTools callback
-class ElectrobunCefClient;
+class ChromeyummCefClient;
 typedef void (*RemoteDevToolsClosedCallback)(void* ctx, int target_id);
 void RemoteDevToolsClosed(void* ctx, int target_id);
 
@@ -625,7 +625,7 @@ struct DevToolsWindowContext {
 };
 
 static std::once_flag g_devtoolsClassRegistered;
-static const char* DEVTOOLS_WINDOW_CLASS = "ElectrobunDevToolsClass";
+static const char* DEVTOOLS_WINDOW_CLASS = "ChromeyummDevToolsClass";
 
 static LRESULT CALLBACK DevToolsWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     DevToolsWindowContext* dtCtx = nullptr;
@@ -684,9 +684,9 @@ static void EnsureDevToolsWindowClassRegistered() {
 std::string getMimeTypeForFile(const std::string& path);
 
 // CEF Response Filter for script injection
-class ElectrobunResponseFilter : public CefResponseFilter {
+class ChromeyummResponseFilter : public CefResponseFilter {
 public:
-    ElectrobunResponseFilter(const std::string& script) : script_(script) {}
+    ChromeyummResponseFilter(const std::string& script) : script_(script) {}
 
     bool InitFilter() override {
         return true;
@@ -759,18 +759,18 @@ private:
     std::string processed_data_;
     size_t output_offset_ = 0;
     bool processed_ = false;
-    IMPLEMENT_REFCOUNTING(ElectrobunResponseFilter);
+    IMPLEMENT_REFCOUNTING(ChromeyummResponseFilter);
 };
 
-// Forward declaration for ElectrobunCefClient
-class ElectrobunCefClient;
+// Forward declaration for ChromeyummCefClient
+class ChromeyummCefClient;
 
 // CEF Resource Request Handler to inject preload scripts via response filter
-class ElectrobunResourceRequestHandler : public CefResourceRequestHandler {
+class ChromeyummResourceRequestHandler : public CefResourceRequestHandler {
 public:
-    CefRefPtr<ElectrobunCefClient> client_ = nullptr;
+    CefRefPtr<ChromeyummCefClient> client_ = nullptr;
 
-    ElectrobunResourceRequestHandler(CefRefPtr<ElectrobunCefClient> client) : client_(client) {}
+    ChromeyummResourceRequestHandler(CefRefPtr<ChromeyummCefClient> client) : client_(client) {}
 
     // Response filter to inject preload scripts into HTML before parsing
     // This ensures scripts execute BEFORE any page JavaScript
@@ -780,26 +780,26 @@ public:
         CefRefPtr<CefRequest> request,
         CefRefPtr<CefResponse> response) override;
 
-    IMPLEMENT_REFCOUNTING(ElectrobunResourceRequestHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummResourceRequestHandler);
 };
 
 // CEF Request Handler
-class ElectrobunRequestHandler : public CefRequestHandler {
+class ChromeyummRequestHandler : public CefRequestHandler {
 public:
     uint32_t webview_id_ = 0;
     WebviewEventHandler webview_event_handler_ = nullptr;
     AbstractView* abstract_view_ = nullptr;
-    CefRefPtr<ElectrobunCefClient> client_ = nullptr;
+    CefRefPtr<ChromeyummCefClient> client_ = nullptr;
 
     // Static debounce timestamp for ctrl+click handling
     static double lastCtrlClickTime;
 
-    ElectrobunRequestHandler() {}
+    ChromeyummRequestHandler() {}
 
     void SetWebviewId(uint32_t id) { webview_id_ = id; }
     void SetWebviewEventHandler(WebviewEventHandler handler) { webview_event_handler_ = handler; }
     void SetAbstractView(AbstractView* view) { abstract_view_ = view; }
-    void SetClient(CefRefPtr<ElectrobunCefClient> client) { client_ = client; }
+    void SetClient(CefRefPtr<ChromeyummCefClient> client) { client_ = client; }
 
     // Return resource request handler to enable response filtering
     CefRefPtr<CefResourceRequestHandler> GetResourceRequestHandler(
@@ -812,7 +812,7 @@ public:
         bool& disable_default_handling) override {
 
         if (client_) {
-            return new ElectrobunResourceRequestHandler(client_);
+            return new ChromeyummResourceRequestHandler(client_);
         }
         return nullptr;
     }
@@ -896,16 +896,16 @@ public:
     }
 
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunRequestHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummRequestHandler);
 };
 
 // Initialize static debounce timestamp
-double ElectrobunRequestHandler::lastCtrlClickTime = 0;
+double ChromeyummRequestHandler::lastCtrlClickTime = 0;
 
 // CEF Context Menu Handler for devtools support
-class ElectrobunContextMenuHandler : public CefContextMenuHandler {
+class ChromeyummContextMenuHandler : public CefContextMenuHandler {
 public:
-    ElectrobunContextMenuHandler() {}
+    ChromeyummContextMenuHandler() {}
     
     void OnBeforeContextMenu(CefRefPtr<CefBrowser> browser,
                            CefRefPtr<CefFrame> frame,
@@ -916,7 +916,7 @@ public:
         model->AddItem(26501, "Inspect Element");
     }
     
-    // Defined out-of-line after ElectrobunCefClient (needs full class definition)
+    // Defined out-of-line after ChromeyummCefClient (needs full class definition)
     bool OnContextMenuCommand(CefRefPtr<CefBrowser> browser,
                             CefRefPtr<CefFrame> frame,
                             CefRefPtr<CefContextMenuParams> params,
@@ -924,11 +924,11 @@ public:
                             EventFlags event_flags) override;
 
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunContextMenuHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummContextMenuHandler);
 };
 
 // CEF Permission Handler for user media and other permissions
-class ElectrobunPermissionHandler : public CefPermissionHandler {
+class ChromeyummPermissionHandler : public CefPermissionHandler {
 public:
     bool OnRequestMediaAccessPermission(
         CefRefPtr<CefBrowser> browser,
@@ -1060,7 +1060,7 @@ public:
     }
 
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunPermissionHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummPermissionHandler);
 };
 
 // Helper functions for string conversion
@@ -1109,7 +1109,7 @@ std::string WStringToString(const std::wstring& wstr) {
 }
 
 // CEF Dialog Handler for file dialogs
-class ElectrobunDialogHandler : public CefDialogHandler {
+class ChromeyummDialogHandler : public CefDialogHandler {
 public:
     bool OnFileDialog(CefRefPtr<CefBrowser> browser,
                       FileDialogMode mode,
@@ -1256,13 +1256,13 @@ public:
     }
     
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunDialogHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummDialogHandler);
 };
 
 // CEF Download handler for Windows
-class ElectrobunDownloadHandler : public CefDownloadHandler {
+class ChromeyummDownloadHandler : public CefDownloadHandler {
 public:
-    ElectrobunDownloadHandler() {}
+    ChromeyummDownloadHandler() {}
 
     bool OnBeforeDownload(CefRefPtr<CefBrowser> browser,
                           CefRefPtr<CefDownloadItem> download_item,
@@ -1335,7 +1335,7 @@ public:
     }
 
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunDownloadHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummDownloadHandler);
 };
 
 // OSR (Off-Screen Rendering) Window for transparent CEF windows
@@ -1534,9 +1534,9 @@ private:
 };
 
 // CEF Render Handler for off-screen rendering (OSR) mode
-class ElectrobunRenderHandler : public CefRenderHandler {
+class ChromeyummRenderHandler : public CefRenderHandler {
 public:
-    ElectrobunRenderHandler() : view_width_(800), view_height_(600), osr_window_(nullptr), window_id_(0) {}
+    ChromeyummRenderHandler() : view_width_(800), view_height_(600), osr_window_(nullptr), window_id_(0) {}
 
     void SetOSRWindow(OSRWindow* window) {
         osr_window_ = window;
@@ -1579,31 +1579,31 @@ private:
     OSRWindow* osr_window_;
     uint32_t window_id_; // webviewId — key into g_spoutWindows
 
-    IMPLEMENT_REFCOUNTING(ElectrobunRenderHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummRenderHandler);
 };
 
 // Forward declaration
 void handleApplicationMenuSelection(UINT menuId);
 
 // CEF Keyboard Handler for menu accelerators
-class ElectrobunKeyboardHandler : public CefKeyboardHandler {
+class ChromeyummKeyboardHandler : public CefKeyboardHandler {
 public:
-    // Defined out-of-line after ElectrobunCefClient (needs full class definition)
+    // Defined out-of-line after ChromeyummCefClient (needs full class definition)
     bool OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
                       const CefKeyEvent& event,
                       CefEventHandle os_event,
                       bool* is_keyboard_shortcut) override;
 
 private:
-    IMPLEMENT_REFCOUNTING(ElectrobunKeyboardHandler);
+    IMPLEMENT_REFCOUNTING(ChromeyummKeyboardHandler);
 };
 
 // CEF Client class with load and life span handlers
-class ElectrobunCefClient : public CefClient, public CefDisplayHandler {
+class ChromeyummCefClient : public CefClient, public CefDisplayHandler {
 public:
     WebviewEventHandler webview_event_handler_ = nullptr;
 
-    ElectrobunCefClient(uint32_t webviewId,
+    ChromeyummCefClient(uint32_t webviewId,
                        HandlePostMessage eventBridgeHandler,
                        HandlePostMessage bunBridgeHandler,
                        HandlePostMessage internalBridgeHandler,
@@ -1614,23 +1614,23 @@ public:
           webview_tag_handler_(internalBridgeHandler),
           is_sandboxed_(sandbox),
           osr_enabled_(false) {
-        m_loadHandler = new ElectrobunLoadHandler();
+        m_loadHandler = new ChromeyummLoadHandler();
         m_loadHandler->SetClient(this); // Set client reference for load handler
-        m_lifeSpanHandler = new ElectrobunLifeSpanHandler();
-        m_requestHandler = new ElectrobunRequestHandler();
+        m_lifeSpanHandler = new ChromeyummLifeSpanHandler();
+        m_requestHandler = new ChromeyummRequestHandler();
         m_requestHandler->SetWebviewId(webviewId);
         m_requestHandler->SetClient(this); // Set client reference for response filter
-        m_contextMenuHandler = new ElectrobunContextMenuHandler();
-        m_permissionHandler = new ElectrobunPermissionHandler();
-        m_dialogHandler = new ElectrobunDialogHandler();
-        m_downloadHandler = new ElectrobunDownloadHandler();
-        m_keyboardHandler = new ElectrobunKeyboardHandler();
+        m_contextMenuHandler = new ChromeyummContextMenuHandler();
+        m_permissionHandler = new ChromeyummPermissionHandler();
+        m_dialogHandler = new ChromeyummDialogHandler();
+        m_downloadHandler = new ChromeyummDownloadHandler();
+        m_keyboardHandler = new ChromeyummKeyboardHandler();
         m_renderHandler = nullptr; // Created only when OSR is enabled
     }
 
     void EnableOSR(int width, int height) {
         osr_enabled_ = true;
-        m_renderHandler = new ElectrobunRenderHandler();
+        m_renderHandler = new ChromeyummRenderHandler();
         m_renderHandler->SetViewSize(width, height);
     }
 
@@ -1674,7 +1674,7 @@ public:
     }
 
     void AddPreloadScript(const std::string& script) {
-        electrobun_script_ = script;
+        chromeyumm_script_ = script;
     }
 
     void UpdateCustomPreloadScript(const std::string& script) {
@@ -1759,7 +1759,7 @@ public:
     std::string GetCombinedScript() const {
         // Inject webviewId into global scope before other scripts
         std::string combined_script = "window.webviewId = " + std::to_string(webview_id_) + ";\n";
-        combined_script += electrobun_script_;
+        combined_script += chromeyumm_script_;
         if (!custom_script_.empty()) {
             combined_script += "\n" + custom_script_;
         }
@@ -1808,12 +1808,12 @@ public:
         int port = g_remoteDebugPort;
 
         // Keep ref to self for the background thread
-        CefRefPtr<ElectrobunCefClient> self(this);
+        CefRefPtr<ChromeyummCefClient> self(this);
 
         // Fetch /json on a background thread
         std::thread([self, target_id, targetUrl, targetTitle, port]() {
             // WinHTTP synchronous GET to http://127.0.0.1:{port}/json
-            HINTERNET hSession = WinHttpOpen(L"Electrobun/DevTools",
+            HINTERNET hSession = WinHttpOpen(L"Chromeyumm/DevTools",
                                               WINHTTP_ACCESS_TYPE_NO_PROXY,
                                               WINHTTP_NO_PROXY_NAME,
                                               WINHTTP_NO_PROXY_BYPASS, 0);
@@ -1933,13 +1933,13 @@ public:
             // Post back to the UI thread via CefPostTask
             class CreateDevToolsTask : public CefTask {
             public:
-                CreateDevToolsTask(CefRefPtr<ElectrobunCefClient> client, int tid, const std::string& url)
+                CreateDevToolsTask(CefRefPtr<ChromeyummCefClient> client, int tid, const std::string& url)
                     : client_(client), target_id_(tid), url_(url) {}
                 void Execute() override {
                     client_->CreateRemoteDevToolsWindow(target_id_, url_);
                 }
             private:
-                CefRefPtr<ElectrobunCefClient> client_;
+                CefRefPtr<ChromeyummCefClient> client_;
                 int target_id_;
                 std::string url_;
                 IMPLEMENT_REFCOUNTING(CreateDevToolsTask);
@@ -2045,18 +2045,18 @@ private:
     HandlePostMessage bun_bridge_handler_;
     HandlePostMessage webview_tag_handler_;
     bool is_sandboxed_;
-    std::string electrobun_script_;
+    std::string chromeyumm_script_;
     std::string custom_script_;
     CefRefPtr<CefBrowser> browser_;
-    CefRefPtr<ElectrobunLoadHandler> m_loadHandler;
-    CefRefPtr<ElectrobunLifeSpanHandler> m_lifeSpanHandler;
-    CefRefPtr<ElectrobunRequestHandler> m_requestHandler;
-    CefRefPtr<ElectrobunContextMenuHandler> m_contextMenuHandler;
-    CefRefPtr<ElectrobunPermissionHandler> m_permissionHandler;
-    CefRefPtr<ElectrobunDialogHandler> m_dialogHandler;
-    CefRefPtr<ElectrobunDownloadHandler> m_downloadHandler;
-    CefRefPtr<ElectrobunKeyboardHandler> m_keyboardHandler;
-    CefRefPtr<ElectrobunRenderHandler> m_renderHandler;
+    CefRefPtr<ChromeyummLoadHandler> m_loadHandler;
+    CefRefPtr<ChromeyummLifeSpanHandler> m_lifeSpanHandler;
+    CefRefPtr<ChromeyummRequestHandler> m_requestHandler;
+    CefRefPtr<ChromeyummContextMenuHandler> m_contextMenuHandler;
+    CefRefPtr<ChromeyummPermissionHandler> m_permissionHandler;
+    CefRefPtr<ChromeyummDialogHandler> m_dialogHandler;
+    CefRefPtr<ChromeyummDownloadHandler> m_downloadHandler;
+    CefRefPtr<ChromeyummKeyboardHandler> m_keyboardHandler;
+    CefRefPtr<ChromeyummRenderHandler> m_renderHandler;
     bool osr_enabled_;
     std::function<void()> load_end_callback_;  // Callback for page load completion
 
@@ -2071,27 +2071,27 @@ private:
     std::map<int, DevToolsHost> devtools_hosts_;
     std::string last_title_;
 
-    IMPLEMENT_REFCOUNTING(ElectrobunCefClient);
+    IMPLEMENT_REFCOUNTING(ChromeyummCefClient);
 };
 
-// Free function callback for RemoteDevToolsClient -> ElectrobunCefClient
+// Free function callback for RemoteDevToolsClient -> ChromeyummCefClient
 void RemoteDevToolsClosed(void* ctx, int target_id) {
     if (!ctx) return;
-    static_cast<ElectrobunCefClient*>(ctx)->OnRemoteDevToolsClosed(target_id);
+    static_cast<ChromeyummCefClient*>(ctx)->OnRemoteDevToolsClosed(target_id);
 }
 
-// Out-of-line definitions for handlers that need ElectrobunCefClient to be fully defined
+// Out-of-line definitions for handlers that need ChromeyummCefClient to be fully defined
 
-bool ElectrobunContextMenuHandler::OnContextMenuCommand(
+bool ChromeyummContextMenuHandler::OnContextMenuCommand(
     CefRefPtr<CefBrowser> browser,
     CefRefPtr<CefFrame> frame,
     CefRefPtr<CefContextMenuParams> params,
     int command_id,
     EventFlags event_flags) {
     if (command_id == 26501) {
-        // Open remote DevTools via the owning ElectrobunCefClient
+        // Open remote DevTools via the owning ChromeyummCefClient
         CefRefPtr<CefClient> client = browser->GetHost()->GetClient();
-        ElectrobunCefClient* ebClient = static_cast<ElectrobunCefClient*>(client.get());
+        ChromeyummCefClient* ebClient = static_cast<ChromeyummCefClient*>(client.get());
         if (ebClient) {
             ebClient->OpenRemoteDevToolsFrontend(browser);
         }
@@ -2100,7 +2100,7 @@ bool ElectrobunContextMenuHandler::OnContextMenuCommand(
     return false;
 }
 
-bool ElectrobunKeyboardHandler::OnPreKeyEvent(
+bool ChromeyummKeyboardHandler::OnPreKeyEvent(
     CefRefPtr<CefBrowser> browser,
     const CefKeyEvent& event,
     CefEventHandle os_event,
@@ -2117,7 +2117,7 @@ bool ElectrobunKeyboardHandler::OnPreKeyEvent(
                          (event.modifiers & EVENTFLAG_SHIFT_DOWN));
     if (isF12 || isCtrlShiftI) {
         CefRefPtr<CefClient> client = browser->GetHost()->GetClient();
-        ElectrobunCefClient* ebClient = static_cast<ElectrobunCefClient*>(client.get());
+        ChromeyummCefClient* ebClient = static_cast<ChromeyummCefClient*>(client.get());
         if (ebClient) {
             ebClient->OpenRemoteDevToolsFrontend(browser);
         }
@@ -2149,10 +2149,10 @@ bool ElectrobunKeyboardHandler::OnPreKeyEvent(
     return false;
 }
 
-// ElectrobunRenderHandler::OnPaint implementation
+// ChromeyummRenderHandler::OnPaint implementation
 // Used for transparent OSR windows only. Spout capture uses PrintWindow in a
 // background thread — not this callback.
-void ElectrobunRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
+void ChromeyummRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
                                        PaintElementType type,
                                        const RectList& dirtyRects,
                                        const void* buffer,
@@ -2163,13 +2163,13 @@ void ElectrobunRenderHandler::OnPaint(CefRefPtr<CefBrowser> browser,
     }
 }
 
-// ElectrobunRenderHandler::OnAcceleratedPaint implementation
+// ChromeyummRenderHandler::OnAcceleratedPaint implementation
 // Called by CEF each rendered frame when shared_texture_enabled=1 (OSR mode).
 // info.shared_texture_handle is a DXGI NT shared handle to the GPU texture.
 // Two independent consumers:
 //   1. D3D output mode — CopySubresourceRegion sub-regions to NativeDisplayWindow swap chains
 //   2. Spout mode      — SpoutDX::SendTexture to external Spout receivers
-void ElectrobunRenderHandler::OnAcceleratedPaint(
+void ChromeyummRenderHandler::OnAcceleratedPaint(
     CefRefPtr<CefBrowser> browser,
     PaintElementType type,
     const RectList& dirtyRects,
@@ -2192,7 +2192,7 @@ void ElectrobunRenderHandler::OnAcceleratedPaint(
         return;
     }
 
-#if ELECTROBUN_HAS_SPOUT
+#if CHROMEYUMM_HAS_SPOUT
     auto it = g_spoutWindows.find(window_id_);
     if (it == g_spoutWindows.end()) return;
     auto& state = it->second;
@@ -2360,8 +2360,8 @@ void ElectrobunRenderHandler::OnAcceleratedPaint(
 #endif
 }
 
-// Helper function implementation (defined after ElectrobunCefClient class)
-void SetBrowserOnClient(CefRefPtr<ElectrobunCefClient> client, CefRefPtr<CefBrowser> browser) {
+// Helper function implementation (defined after ChromeyummCefClient class)
+void SetBrowserOnClient(CefRefPtr<ChromeyummCefClient> client, CefRefPtr<CefBrowser> browser) {
     if (client && browser) {
         client->SetBrowser(browser);
         // Store preload scripts for this browser ID so load handler can access them
@@ -2372,13 +2372,13 @@ void SetBrowserOnClient(CefRefPtr<ElectrobunCefClient> client, CefRefPtr<CefBrow
     }
 }
 
-// ElectrobunLoadHandler method implementations (defined after ElectrobunCefClient class)
-void ElectrobunLoadHandler::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transition_type) {
+// ChromeyummLoadHandler method implementations (defined after ChromeyummCefClient class)
+void ChromeyummLoadHandler::OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transition_type) {
     // NOTE: OnLoadStart is now a fallback - primary injection happens via GetResourceResponseFilter
     // This ensures preload scripts are in the HTML before parsing, guaranteeing execution order
 }
 
-void ElectrobunLoadHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) {
+void ChromeyummLoadHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) {
     // Fire did-navigate event
     if (frame->IsMain() && webview_event_handler_) {
         std::string url = frame->GetURL().ToString();
@@ -2391,8 +2391,8 @@ void ElectrobunLoadHandler::OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<C
     }
 }
 
-// ElectrobunResourceRequestHandler method implementations (defined after ElectrobunCefClient class)
-CefRefPtr<CefResponseFilter> ElectrobunResourceRequestHandler::GetResourceResponseFilter(
+// ChromeyummResourceRequestHandler method implementations (defined after ChromeyummCefClient class)
+CefRefPtr<CefResponseFilter> ChromeyummResourceRequestHandler::GetResourceResponseFilter(
     CefRefPtr<CefBrowser> browser,
     CefRefPtr<CefFrame> frame,
     CefRefPtr<CefRequest> request,
@@ -2411,7 +2411,7 @@ CefRefPtr<CefResponseFilter> ElectrobunResourceRequestHandler::GetResourceRespon
 
         if (!combinedScript.empty()) {
             std::cout << "[CEF] Installing response filter to inject preload scripts into HTML" << std::endl;
-            return new ElectrobunResponseFilter(combinedScript);
+            return new ChromeyummResponseFilter(combinedScript);
         }
     }
 
@@ -2669,7 +2669,7 @@ public:
             bool isBlockRule = !rule.empty() && rule[0] == '^';
             std::string pattern = isBlockRule ? rule.substr(1) : rule;
 
-            if (electrobun::globMatch(pattern, url)) {
+            if (chromeyumm::globMatch(pattern, url)) {
                 allowed = !isBlockRule; // Last match wins
             }
         }
@@ -2807,7 +2807,7 @@ bool checkNavigationRules(AbstractView* view, const std::string& url) {
 class CEFView : public AbstractView {
 private:
     CefRefPtr<CefBrowser> browser;
-    CefRefPtr<ElectrobunCefClient> client;
+    CefRefPtr<ChromeyummCefClient> client;
     OSRWindow* osr_window;
     bool is_osr_mode;
 
@@ -3005,7 +3005,7 @@ public:
         }
     }
     
-    void setClient(CefRefPtr<ElectrobunCefClient> cl) {
+    void setClient(CefRefPtr<ChromeyummCefClient> cl) {
         client = cl;
     }
     
@@ -3013,7 +3013,7 @@ public:
         return browser;
     }
     
-    CefRefPtr<ElectrobunCefClient> getClient() {
+    CefRefPtr<ChromeyummCefClient> getClient() {
         return client;
     }
     
@@ -4388,7 +4388,7 @@ static UINT getMenuVirtualKeyCode(const std::string& key) {
 // Parse modifiers from accelerator string for menu accelerators using the
 // shared cross-platform parser. Returns FCONTROL, FALT, FSHIFT flags.
 static BYTE parseMenuModifiers(const std::string& accelerator, std::string& outKey) {
-    auto parts = electrobun::parseAccelerator(accelerator);
+    auto parts = chromeyumm::parseAccelerator(accelerator);
     outKey = parts.key;
 
     BYTE modifiers = FVIRTKEY;
@@ -4912,7 +4912,7 @@ void TerminateCEFHelperProcesses() {
     CloseHandle(hSnapshot);
 }
 
-ELECTROBUN_EXPORT bool initCEF() {
+CHROMEYUMM_EXPORT bool initCEF() {
     if (g_cef_initialized) {
         return true; // Already initialized
     }
@@ -4949,11 +4949,11 @@ ELECTROBUN_EXPORT bool initCEF() {
     std::string userDataDir;
     char* localAppData = getenv("LOCALAPPDATA");
     if (localAppData) {
-        userDataDir = buildAppDataPath(localAppData, g_electrobunIdentifier, g_electrobunChannel, "CEF", '\\');
+        userDataDir = buildAppDataPath(localAppData, g_chromeyummIdentifier, g_chromeyummChannel, "CEF", '\\');
         std::cout << "[CEF] Using path: " << userDataDir << std::endl;
     } else {
         // Fallback to executable directory if LOCALAPPDATA not available
-        userDataDir = buildAppDataPath(exePath, g_electrobunIdentifier, g_electrobunChannel, "cef_cache", '\\');
+        userDataDir = buildAppDataPath(exePath, g_chromeyummIdentifier, g_chromeyummChannel, "cef_cache", '\\');
     }
 
     // Create cache directory if it doesn't exist
@@ -4963,13 +4963,13 @@ ELECTROBUN_EXPORT bool initCEF() {
     CefMainArgs main_args(GetModuleHandle(NULL));
     
     // Create the app
-    g_cef_app = new ElectrobunCefApp();
+    g_cef_app = new ChromeyummCefApp();
 
     // Read user-defined chromium flags from build.json (in exe directory)
     std::string buildJsonPath = std::string(exePath) + "\\build.json";
-    std::string buildJsonContent = electrobun::readFileToString(buildJsonPath);
+    std::string buildJsonContent = chromeyumm::readFileToString(buildJsonPath);
     if (!buildJsonContent.empty()) {
-        g_userChromiumFlags = electrobun::parseChromiumFlags(buildJsonContent);
+        g_userChromiumFlags = chromeyumm::parseChromiumFlags(buildJsonContent);
     }
 
     // CEF settings
@@ -5055,7 +5055,7 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
             } else {
                 // Build path with identifier/channel structure (consistent with CLI and updater)
                 // Structure: %LOCALAPPDATA%\{identifier}\{channel}\CEF\Partitions\{partitionName}
-                std::string cachePath = buildPartitionPath(localAppData, g_electrobunIdentifier, g_electrobunChannel, "CEF", partitionName, '\\');
+                std::string cachePath = buildPartitionPath(localAppData, g_chromeyummIdentifier, g_chromeyummChannel, "CEF", partitionName, '\\');
 
                 // Create directory if it doesn't exist
                 std::wstring wideCachePath(cachePath.begin(), cachePath.end());
@@ -5093,7 +5093,7 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
                                        HandlePostMessage eventBridgeHandler,
                                        HandlePostMessage bunBridgeHandler,
                                        HandlePostMessage internalBridgeHandler,
-                                       const char *electrobunPreloadScript,
+                                       const char *chromeyummPreloadScript,
                                        const char *customPreloadScript,
                                        bool transparent,
                                        bool sandbox,
@@ -5142,7 +5142,7 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
         }
 
         // Create CEF client with bridge handlers
-        auto client = new ElectrobunCefClient(webviewId, eventBridgeHandler, bunBridgeHandler, internalBridgeHandler, sandbox);
+        auto client = new ChromeyummCefClient(webviewId, eventBridgeHandler, bunBridgeHandler, internalBridgeHandler, sandbox);
 
         // Configure OSR mode for transparent windows
         if (transparent) {
@@ -5190,8 +5190,8 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
         }
         
         // Set up preload scripts
-        if (electrobunPreloadScript && strlen(electrobunPreloadScript) > 0) {
-            client->AddPreloadScript(std::string(electrobunPreloadScript));
+        if (chromeyummPreloadScript && strlen(chromeyummPreloadScript) > 0) {
+            client->AddPreloadScript(std::string(chromeyummPreloadScript));
         }
         if (customPreloadScript && strlen(customPreloadScript) > 0) {
             client->UpdateCustomPreloadScript(std::string(customPreloadScript));
@@ -5339,18 +5339,18 @@ BOOL WINAPI ConsoleControlHandler(DWORD dwCtrlType) {
 
 extern "C" {
 
-ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, const char* channel) {
+CHROMEYUMM_EXPORT void startEventLoop(const char* identifier, const char* name, const char* channel) {
     g_mainThreadId = GetCurrentThreadId();
 
     // Store identifier, name, and channel globally for use in CEF initialization
     if (identifier && identifier[0]) {
-        g_electrobunIdentifier = std::string(identifier);
+        g_chromeyummIdentifier = std::string(identifier);
     }
     if (name && name[0]) {
-        g_electrobunName = std::string(name);
+        g_chromeyummName = std::string(name);
     }
     if (channel && channel[0]) {
-        g_electrobunChannel = std::string(channel);
+        g_chromeyummChannel = std::string(channel);
     }
 
     // Set up console control handler for graceful shutdown on Ctrl+C
@@ -5467,17 +5467,17 @@ ELECTROBUN_EXPORT void startEventLoop(const char* identifier, const char* name, 
 // Must be called before any window/webview creation (dispatch_sync).
 static DWORD WINAPI EventLoopThreadProc(LPVOID) {
     startEventLoop(
-        g_electrobunIdentifier.c_str(),
-        g_electrobunName.c_str(),
-        g_electrobunChannel.c_str()
+        g_chromeyummIdentifier.c_str(),
+        g_chromeyummName.c_str(),
+        g_chromeyummChannel.c_str()
     );
     return 0;
 }
 
-ELECTROBUN_EXPORT void initEventLoop(const char* identifier, const char* name, const char* channel) {
-    if (identifier && identifier[0]) g_electrobunIdentifier = std::string(identifier);
-    if (name      && name[0])       g_electrobunName       = std::string(name);
-    if (channel   && channel[0])    g_electrobunChannel    = std::string(channel);
+CHROMEYUMM_EXPORT void initEventLoop(const char* identifier, const char* name, const char* channel) {
+    if (identifier && identifier[0]) g_chromeyummIdentifier = std::string(identifier);
+    if (name      && name[0])       g_chromeyummName       = std::string(name);
+    if (channel   && channel[0])    g_chromeyummChannel    = std::string(channel);
 
     g_eventLoopReadyEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     CreateThread(NULL, 0, EventLoopThreadProc, NULL, 0, NULL);
@@ -5487,7 +5487,7 @@ ELECTROBUN_EXPORT void initEventLoop(const char* identifier, const char* name, c
     g_eventLoopReadyEvent = NULL;
 }
 
-ELECTROBUN_EXPORT void stopEventLoop() {
+CHROMEYUMM_EXPORT void stopEventLoop() {
     if (g_eventLoopStopping.exchange(true)) {
         return;
     }
@@ -5506,12 +5506,12 @@ ELECTROBUN_EXPORT void stopEventLoop() {
     }
 }
 
-ELECTROBUN_EXPORT void killApp() {
+CHROMEYUMM_EXPORT void killApp() {
     // Deprecated - delegates to stopEventLoop for backward compatibility
     stopEventLoop();
 }
 
-ELECTROBUN_EXPORT void waitForShutdownComplete(int timeoutMs) {
+CHROMEYUMM_EXPORT void waitForShutdownComplete(int timeoutMs) {
     int waited = 0;
     while (!g_shutdownComplete.load() && waited < timeoutMs) {
         Sleep(10);
@@ -5519,15 +5519,15 @@ ELECTROBUN_EXPORT void waitForShutdownComplete(int timeoutMs) {
     }
 }
 
-ELECTROBUN_EXPORT void forceExit(int code) {
+CHROMEYUMM_EXPORT void forceExit(int code) {
     _exit(code);
 }
 
-ELECTROBUN_EXPORT void setQuitRequestedHandler(QuitRequestedHandler handler) {
+CHROMEYUMM_EXPORT void setQuitRequestedHandler(QuitRequestedHandler handler) {
     g_quitRequestedHandler = handler;
 }
 
-ELECTROBUN_EXPORT void shutdownApplication() {
+CHROMEYUMM_EXPORT void shutdownApplication() {
     // Deprecated - use stopEventLoop() instead
     stopEventLoop();
 }
@@ -5538,7 +5538,7 @@ static struct {
     bool startPassthrough;
 } g_nextWebviewFlags = {false, false};
 
-ELECTROBUN_EXPORT void setNextWebviewFlags(bool startTransparent, bool startPassthrough) {
+CHROMEYUMM_EXPORT void setNextWebviewFlags(bool startTransparent, bool startPassthrough) {
     g_nextWebviewFlags.startTransparent = startTransparent;
     g_nextWebviewFlags.startPassthrough = startPassthrough;
 }
@@ -5547,12 +5547,12 @@ ELECTROBUN_EXPORT void setNextWebviewFlags(bool startTransparent, bool startPass
 // consumed and reset to false by initWebview().
 static bool g_nextWebviewSharedTexture = false;
 
-ELECTROBUN_EXPORT void setNextWebviewSharedTexture(bool enabled) {
+CHROMEYUMM_EXPORT void setNextWebviewSharedTexture(bool enabled) {
     g_nextWebviewSharedTexture = enabled;
 }
 
 // Clean, elegant initWebview function - Windows version matching Mac pattern
-ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
+CHROMEYUMM_EXPORT AbstractView* initWebview(uint32_t webviewId,
                          NSWindow *window,  // Actually HWND on Windows
                          const char *renderer,
                          const char *url,
@@ -5565,7 +5565,7 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
                          HandlePostMessage eventBridgeHandler,
                          HandlePostMessage bunBridgeHandler,
                          HandlePostMessage internalBridgeHandler,
-                         const char *electrobunPreloadScript,
+                         const char *chromeyummPreloadScript,
                          const char *customPreloadScript,
                          const char *viewsRoot,
                          bool transparent,
@@ -5593,7 +5593,7 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
         auto cefView = createCEFView(webviewId, hwnd, url, x, y, width, height, autoResize,
                                     partitionIdentifier, navigationCallback, webviewEventHandler,
                                     eventBridgeHandler, bunBridgeHandler, internalBridgeHandler,
-                                    electrobunPreloadScript, customPreloadScript, transparent, sandbox,
+                                    chromeyummPreloadScript, customPreloadScript, transparent, sandbox,
                                     sharedTexture);
         view = cefView.get();
     }
@@ -5613,7 +5613,7 @@ ELECTROBUN_EXPORT AbstractView* initWebview(uint32_t webviewId,
 }
 
 
-ELECTROBUN_EXPORT MyScriptMessageHandlerWithReply* addScriptMessageHandlerWithReply(WKWebView *webView,
+CHROMEYUMM_EXPORT MyScriptMessageHandlerWithReply* addScriptMessageHandlerWithReply(WKWebView *webView,
                                                               uint32_t webviewId,
                                                               const char *name,
                                                               HandlePostMessageWithReply callback) {
@@ -5623,7 +5623,7 @@ ELECTROBUN_EXPORT MyScriptMessageHandlerWithReply* addScriptMessageHandlerWithRe
     handler->webviewId = webviewId;
     return handler;
 }
-ELECTROBUN_EXPORT void loadURLInWebView(AbstractView *abstractView, const char *urlString) {
+CHROMEYUMM_EXPORT void loadURLInWebView(AbstractView *abstractView, const char *urlString) {
     if (!abstractView || !urlString) {
         ::log("ERROR: Invalid parameters passed to loadURLInWebView");
         return;
@@ -5635,7 +5635,7 @@ ELECTROBUN_EXPORT void loadURLInWebView(AbstractView *abstractView, const char *
 }
 
 
-ELECTROBUN_EXPORT void loadHTMLInWebView(AbstractView *abstractView, const char *htmlString) {
+CHROMEYUMM_EXPORT void loadHTMLInWebView(AbstractView *abstractView, const char *htmlString) {
     if (!abstractView || !htmlString) {
         ::log("ERROR: Invalid parameters passed to loadHTMLInWebView");
         return;
@@ -5644,7 +5644,7 @@ ELECTROBUN_EXPORT void loadHTMLInWebView(AbstractView *abstractView, const char 
     abstractView->loadHTML(htmlString);
 }
 
-ELECTROBUN_EXPORT void webviewGoBack(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT void webviewGoBack(AbstractView *abstractView) {
     if (!abstractView) {
         ::log("ERROR: Invalid AbstractView or webview in webviewGoBack");
         return;
@@ -5653,7 +5653,7 @@ ELECTROBUN_EXPORT void webviewGoBack(AbstractView *abstractView) {
     abstractView->goBack();
 }
 
-ELECTROBUN_EXPORT void webviewGoForward(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT void webviewGoForward(AbstractView *abstractView) {
     if (!abstractView) {
         ::log("ERROR: Invalid AbstractView or webview in webviewGoForward");
         return;
@@ -5662,7 +5662,7 @@ ELECTROBUN_EXPORT void webviewGoForward(AbstractView *abstractView) {
     abstractView->goForward();
 }
 
-ELECTROBUN_EXPORT void webviewReload(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT void webviewReload(AbstractView *abstractView) {
     if (!abstractView) {
         ::log("ERROR: Invalid AbstractView or webview in webviewReload");
         return;
@@ -5671,7 +5671,7 @@ ELECTROBUN_EXPORT void webviewReload(AbstractView *abstractView) {
     abstractView->reload();
 }
 
-ELECTROBUN_EXPORT void webviewRemove(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT void webviewRemove(AbstractView *abstractView) {
     if (!abstractView) {
         ::log("ERROR: Invalid AbstractView in webviewRemove");
         return;
@@ -5680,7 +5680,7 @@ ELECTROBUN_EXPORT void webviewRemove(AbstractView *abstractView) {
     abstractView->remove();
 }
 
-ELECTROBUN_EXPORT BOOL webviewCanGoBack(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT BOOL webviewCanGoBack(AbstractView *abstractView) {
     if (!abstractView) {
         ::log("ERROR: Invalid AbstractView or webview in webviewCanGoBack");
         return FALSE;
@@ -5689,7 +5689,7 @@ ELECTROBUN_EXPORT BOOL webviewCanGoBack(AbstractView *abstractView) {
     return abstractView->canGoBack();
 }
 
-ELECTROBUN_EXPORT BOOL webviewCanGoForward(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT BOOL webviewCanGoForward(AbstractView *abstractView) {
     if (!abstractView) {
         ::log("ERROR: Invalid AbstractView or webview in webviewCanGoForward");
         return FALSE;
@@ -5698,7 +5698,7 @@ ELECTROBUN_EXPORT BOOL webviewCanGoForward(AbstractView *abstractView) {
     return abstractView->canGoForward();
 }
 
-ELECTROBUN_EXPORT void evaluateJavaScriptWithNoCompletion(AbstractView *abstractView, const char *script) {
+CHROMEYUMM_EXPORT void evaluateJavaScriptWithNoCompletion(AbstractView *abstractView, const char *script) {
     if (!abstractView || !script) {
         ::log("ERROR: Invalid parameters passed to evaluateJavaScriptWithNoCompletion");
         return;
@@ -5708,11 +5708,11 @@ ELECTROBUN_EXPORT void evaluateJavaScriptWithNoCompletion(AbstractView *abstract
     
 }
 
-ELECTROBUN_EXPORT void testFFI(void *ptr) {
+CHROMEYUMM_EXPORT void testFFI(void *ptr) {
     // Stub implementation
 }
 
-ELECTROBUN_EXPORT void callAsyncJavaScript(const char *messageId,
+CHROMEYUMM_EXPORT void callAsyncJavaScript(const char *messageId,
                         AbstractView *abstractView,
                         const char *jsString,
                         uint32_t webviewId,
@@ -5724,7 +5724,7 @@ ELECTROBUN_EXPORT void callAsyncJavaScript(const char *messageId,
     }
 }
 
-ELECTROBUN_EXPORT void addPreloadScriptToWebView(AbstractView *abstractView, const char *scriptContent, BOOL forMainFrameOnly) {
+CHROMEYUMM_EXPORT void addPreloadScriptToWebView(AbstractView *abstractView, const char *scriptContent, BOOL forMainFrameOnly) {
     if (abstractView && scriptContent) {
         MainThreadDispatcher::dispatch_sync([abstractView, scriptContent]() {
             abstractView->addPreloadScriptToWebView(scriptContent);
@@ -5732,7 +5732,7 @@ ELECTROBUN_EXPORT void addPreloadScriptToWebView(AbstractView *abstractView, con
     }
 }
 
-ELECTROBUN_EXPORT void updatePreloadScriptToWebView(AbstractView *abstractView,
+CHROMEYUMM_EXPORT void updatePreloadScriptToWebView(AbstractView *abstractView,
                                  const char *scriptIdentifier,
                                  const char *scriptContent,
                                  BOOL forMainFrameOnly) {
@@ -5743,26 +5743,26 @@ ELECTROBUN_EXPORT void updatePreloadScriptToWebView(AbstractView *abstractView,
     }
 }
 
-ELECTROBUN_EXPORT void invokeDecisionHandler(void (*decisionHandler)(int), int policy) {
+CHROMEYUMM_EXPORT void invokeDecisionHandler(void (*decisionHandler)(int), int policy) {
     // Stub implementation
     if (decisionHandler) {
         decisionHandler(policy);
     }
 }
 
-ELECTROBUN_EXPORT const char* getUrlFromNavigationAction(void *navigationAction) {
+CHROMEYUMM_EXPORT const char* getUrlFromNavigationAction(void *navigationAction) {
     // Stub implementation
     static const char* defaultUrl = "about:blank";
     return defaultUrl;
 }
 
-ELECTROBUN_EXPORT const char* getBodyFromScriptMessage(void *message) {
+CHROMEYUMM_EXPORT const char* getBodyFromScriptMessage(void *message) {
     // Stub implementation
     static const char* emptyString = "";
     return emptyString;
 }
 
-ELECTROBUN_EXPORT void webviewSetTransparent(AbstractView *abstractView, BOOL transparent) {
+CHROMEYUMM_EXPORT void webviewSetTransparent(AbstractView *abstractView, BOOL transparent) {
     if (abstractView) {
         // UI operations must be performed on the main thread
         MainThreadDispatcher::dispatch_sync([abstractView, transparent]() {
@@ -5771,7 +5771,7 @@ ELECTROBUN_EXPORT void webviewSetTransparent(AbstractView *abstractView, BOOL tr
     }
 }
 
-ELECTROBUN_EXPORT void webviewSetPassthrough(AbstractView *abstractView, BOOL enablePassthrough) {
+CHROMEYUMM_EXPORT void webviewSetPassthrough(AbstractView *abstractView, BOOL enablePassthrough) {
     if (abstractView) {
         // UI operations must be performed on the main thread
         MainThreadDispatcher::dispatch_sync([abstractView, enablePassthrough]() {
@@ -5780,7 +5780,7 @@ ELECTROBUN_EXPORT void webviewSetPassthrough(AbstractView *abstractView, BOOL en
     }
 }
 
-ELECTROBUN_EXPORT void webviewSetHidden(AbstractView *abstractView, BOOL hidden) {
+CHROMEYUMM_EXPORT void webviewSetHidden(AbstractView *abstractView, BOOL hidden) {
     if (abstractView) {
         // UI operations must be performed on the main thread
         MainThreadDispatcher::dispatch_sync([abstractView, hidden]() {
@@ -5789,7 +5789,7 @@ ELECTROBUN_EXPORT void webviewSetHidden(AbstractView *abstractView, BOOL hidden)
     }
 }
 
-ELECTROBUN_EXPORT void setWebviewNavigationRules(AbstractView *abstractView, const char *rulesJson) {
+CHROMEYUMM_EXPORT void setWebviewNavigationRules(AbstractView *abstractView, const char *rulesJson) {
     if (abstractView) {
         // UI operations must be performed on the main thread
         MainThreadDispatcher::dispatch_sync([abstractView, rulesJson]() {
@@ -5798,7 +5798,7 @@ ELECTROBUN_EXPORT void setWebviewNavigationRules(AbstractView *abstractView, con
     }
 }
 
-ELECTROBUN_EXPORT void webviewFindInPage(AbstractView *abstractView, const char *searchText, bool forward, bool matchCase) {
+CHROMEYUMM_EXPORT void webviewFindInPage(AbstractView *abstractView, const char *searchText, bool forward, bool matchCase) {
     if (abstractView) {
         MainThreadDispatcher::dispatch_sync([abstractView, searchText, forward, matchCase]() {
             abstractView->findInPage(searchText, forward, matchCase);
@@ -5824,7 +5824,7 @@ void toggleRemoteDevTools(uint32_t webviewId) {
     openRemoteDevTools(webviewId);
 }
 
-ELECTROBUN_EXPORT void webviewStopFind(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT void webviewStopFind(AbstractView *abstractView) {
     if (abstractView) {
         MainThreadDispatcher::dispatch_sync([abstractView]() {
             abstractView->stopFindInPage();
@@ -5832,7 +5832,7 @@ ELECTROBUN_EXPORT void webviewStopFind(AbstractView *abstractView) {
     }
 }
 
-ELECTROBUN_EXPORT void webviewOpenDevTools(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT void webviewOpenDevTools(AbstractView *abstractView) {
     if (abstractView) {
         MainThreadDispatcher::dispatch_sync([abstractView]() {
             abstractView->openDevTools();
@@ -5840,7 +5840,7 @@ ELECTROBUN_EXPORT void webviewOpenDevTools(AbstractView *abstractView) {
     }
 }
 
-ELECTROBUN_EXPORT void webviewCloseDevTools(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT void webviewCloseDevTools(AbstractView *abstractView) {
     if (abstractView) {
         MainThreadDispatcher::dispatch_sync([abstractView]() {
             abstractView->closeDevTools();
@@ -5848,7 +5848,7 @@ ELECTROBUN_EXPORT void webviewCloseDevTools(AbstractView *abstractView) {
     }
 }
 
-ELECTROBUN_EXPORT void webviewToggleDevTools(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT void webviewToggleDevTools(AbstractView *abstractView) {
     if (abstractView) {
         MainThreadDispatcher::dispatch_sync([abstractView]() {
             abstractView->toggleDevTools();
@@ -5856,23 +5856,23 @@ ELECTROBUN_EXPORT void webviewToggleDevTools(AbstractView *abstractView) {
     }
 }
 
-ELECTROBUN_EXPORT void webviewSetPageZoom(AbstractView *abstractView, double zoomLevel) {
+CHROMEYUMM_EXPORT void webviewSetPageZoom(AbstractView *abstractView, double zoomLevel) {
     // pageZoom is WebKit-specific, not available on Windows
     // TODO: implement zoom if needed
 }
 
-ELECTROBUN_EXPORT double webviewGetPageZoom(AbstractView *abstractView) {
+CHROMEYUMM_EXPORT double webviewGetPageZoom(AbstractView *abstractView) {
     // pageZoom is WebKit-specific, not available on Windows
     return 1.0;
 }
 
-ELECTROBUN_EXPORT NSRect createNSRectWrapper(double x, double y, double width, double height) {
+CHROMEYUMM_EXPORT NSRect createNSRectWrapper(double x, double y, double width, double height) {
     // Stub implementation
     NSRect rect = {x, y, width, height};
     return rect;
 }
 
-ELECTROBUN_EXPORT NSWindow* createNSWindowWithFrameAndStyle(uint32_t windowId,
+CHROMEYUMM_EXPORT NSWindow* createNSWindowWithFrameAndStyle(uint32_t windowId,
                                          createNSWindowWithFrameAndStyleParams config,
                                          WindowCloseHandler zigCloseHandler,
                                          WindowMoveHandler zigMoveHandler,
@@ -5884,14 +5884,14 @@ ELECTROBUN_EXPORT NSWindow* createNSWindowWithFrameAndStyle(uint32_t windowId,
     return new NSWindow();
 }
 
-ELECTROBUN_EXPORT void testFFI2(void (*completionHandler)()) {
+CHROMEYUMM_EXPORT void testFFI2(void (*completionHandler)()) {
     // Stub implementation
     if (completionHandler) {
         completionHandler();
     }
 }
 
-ELECTROBUN_EXPORT HWND createWindowWithFrameAndStyleFromWorker(
+CHROMEYUMM_EXPORT HWND createWindowWithFrameAndStyleFromWorker(
     uint32_t windowId,
     double x, double y,
     double width, double height,
@@ -6014,7 +6014,7 @@ ELECTROBUN_EXPORT HWND createWindowWithFrameAndStyleFromWorker(
     return hwnd;
 }
 
-ELECTROBUN_EXPORT void showWindow(void *window) {
+CHROMEYUMM_EXPORT void showWindow(void *window) {
     // On Windows, window ptr is actually HWND
     HWND hwnd = reinterpret_cast<HWND>(window);
 
@@ -6071,7 +6071,7 @@ ELECTROBUN_EXPORT void showWindow(void *window) {
     });
 }
 
-ELECTROBUN_EXPORT void hideWindow(void *window) {
+CHROMEYUMM_EXPORT void hideWindow(void *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
     if (!IsWindow(hwnd)) return;
     MainThreadDispatcher::dispatch_sync([=]() {
@@ -6093,7 +6093,7 @@ ELECTROBUN_EXPORT void hideWindow(void *window) {
     });
 }
 
-ELECTROBUN_EXPORT void setWindowTitle(NSWindow *window, const char *title) {
+CHROMEYUMM_EXPORT void setWindowTitle(NSWindow *window, const char *title) {
     // On Windows, NSWindow* is actually HWND
     HWND hwnd = reinterpret_cast<HWND>(window);
 
@@ -6136,7 +6136,7 @@ ELECTROBUN_EXPORT void setWindowTitle(NSWindow *window, const char *title) {
     });
 }
 
-ELECTROBUN_EXPORT void closeWindow(NSWindow *window) {
+CHROMEYUMM_EXPORT void closeWindow(NSWindow *window) {
     // On Windows, NSWindow* is actually HWND
     HWND hwnd = reinterpret_cast<HWND>(window);
 
@@ -6177,7 +6177,7 @@ ELECTROBUN_EXPORT void closeWindow(NSWindow *window) {
     });
 }
 
-ELECTROBUN_EXPORT void minimizeWindow(NSWindow *window) {
+CHROMEYUMM_EXPORT void minimizeWindow(NSWindow *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6190,7 +6190,7 @@ ELECTROBUN_EXPORT void minimizeWindow(NSWindow *window) {
     });
 }
 
-ELECTROBUN_EXPORT void restoreWindow(NSWindow *window) {
+CHROMEYUMM_EXPORT void restoreWindow(NSWindow *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6203,7 +6203,7 @@ ELECTROBUN_EXPORT void restoreWindow(NSWindow *window) {
     });
 }
 
-ELECTROBUN_EXPORT bool isWindowMinimized(NSWindow *window) {
+CHROMEYUMM_EXPORT bool isWindowMinimized(NSWindow *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6213,7 +6213,7 @@ ELECTROBUN_EXPORT bool isWindowMinimized(NSWindow *window) {
     return IsIconic(hwnd) != 0;
 }
 
-ELECTROBUN_EXPORT void maximizeWindow(NSWindow *window) {
+CHROMEYUMM_EXPORT void maximizeWindow(NSWindow *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6226,7 +6226,7 @@ ELECTROBUN_EXPORT void maximizeWindow(NSWindow *window) {
     });
 }
 
-ELECTROBUN_EXPORT void unmaximizeWindow(NSWindow *window) {
+CHROMEYUMM_EXPORT void unmaximizeWindow(NSWindow *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6239,7 +6239,7 @@ ELECTROBUN_EXPORT void unmaximizeWindow(NSWindow *window) {
     });
 }
 
-ELECTROBUN_EXPORT bool isWindowMaximized(NSWindow *window) {
+CHROMEYUMM_EXPORT bool isWindowMaximized(NSWindow *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6249,7 +6249,7 @@ ELECTROBUN_EXPORT bool isWindowMaximized(NSWindow *window) {
     return IsZoomed(hwnd) != 0;
 }
 
-ELECTROBUN_EXPORT void setWindowFullScreen(NSWindow *window, bool fullScreen) {
+CHROMEYUMM_EXPORT void setWindowFullScreen(NSWindow *window, bool fullScreen) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6303,7 +6303,7 @@ ELECTROBUN_EXPORT void setWindowFullScreen(NSWindow *window, bool fullScreen) {
     });
 }
 
-ELECTROBUN_EXPORT bool isWindowFullScreen(NSWindow *window) {
+CHROMEYUMM_EXPORT bool isWindowFullScreen(NSWindow *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6314,7 +6314,7 @@ ELECTROBUN_EXPORT bool isWindowFullScreen(NSWindow *window) {
     return (style & WS_POPUP) && !(style & WS_OVERLAPPEDWINDOW);
 }
 
-ELECTROBUN_EXPORT void setWindowAlwaysOnTop(NSWindow *window, bool alwaysOnTop) {
+CHROMEYUMM_EXPORT void setWindowAlwaysOnTop(NSWindow *window, bool alwaysOnTop) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6330,7 +6330,7 @@ ELECTROBUN_EXPORT void setWindowAlwaysOnTop(NSWindow *window, bool alwaysOnTop) 
     });
 }
 
-ELECTROBUN_EXPORT bool isWindowAlwaysOnTop(NSWindow *window) {
+CHROMEYUMM_EXPORT bool isWindowAlwaysOnTop(NSWindow *window) {
     HWND hwnd = reinterpret_cast<HWND>(window);
 
     if (!IsWindow(hwnd)) {
@@ -6375,7 +6375,7 @@ static LRESULT CALLBACK DisplayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     }
 }
 
-ELECTROBUN_EXPORT HWND createNativeDisplayWindow(
+CHROMEYUMM_EXPORT HWND createNativeDisplayWindow(
     uint32_t displayWindowId, int x, int y, int width, int height) {
     return MainThreadDispatcher::dispatch_sync([=]() -> HWND {
         static bool classRegistered = false;
@@ -6407,7 +6407,7 @@ ELECTROBUN_EXPORT HWND createNativeDisplayWindow(
     });
 }
 
-ELECTROBUN_EXPORT void setNativeDisplayWindowThumbnail(
+CHROMEYUMM_EXPORT void setNativeDisplayWindowThumbnail(
     uint32_t displayWindowId, uint32_t sourceWindowId,
     double xNorm, double yNorm, double wNorm, double hNorm) {
     MainThreadDispatcher::dispatch_sync([=]() {
@@ -6464,7 +6464,7 @@ ELECTROBUN_EXPORT void setNativeDisplayWindowThumbnail(
     });
 }
 
-ELECTROBUN_EXPORT void destroyNativeDisplayWindow(uint32_t displayWindowId) {
+CHROMEYUMM_EXPORT void destroyNativeDisplayWindow(uint32_t displayWindowId) {
     MainThreadDispatcher::dispatch_sync([=]() {
         auto thumbIt = g_displayThumbnails.find(displayWindowId);
         if (thumbIt != g_displayThumbnails.end()) {
@@ -6479,7 +6479,7 @@ ELECTROBUN_EXPORT void destroyNativeDisplayWindow(uint32_t displayWindowId) {
     });
 }
 
-ELECTROBUN_EXPORT void setNativeDisplayWindowVisible(
+CHROMEYUMM_EXPORT void setNativeDisplayWindowVisible(
     uint32_t displayWindowId, bool visible) {
     MainThreadDispatcher::dispatch_sync([=]() {
         auto it = g_displayWindows.find(displayWindowId);
@@ -6488,7 +6488,7 @@ ELECTROBUN_EXPORT void setNativeDisplayWindowVisible(
     });
 }
 
-ELECTROBUN_EXPORT void setNativeDisplayWindowAlwaysOnTop(
+CHROMEYUMM_EXPORT void setNativeDisplayWindowAlwaysOnTop(
     uint32_t displayWindowId, bool alwaysOnTop) {
     MainThreadDispatcher::dispatch_sync([=]() {
         auto it = g_displayWindows.find(displayWindowId);
@@ -6499,7 +6499,7 @@ ELECTROBUN_EXPORT void setNativeDisplayWindowAlwaysOnTop(
     });
 }
 
-ELECTROBUN_EXPORT void setNativeDisplayWindowFullScreen(
+CHROMEYUMM_EXPORT void setNativeDisplayWindowFullScreen(
     uint32_t displayWindowId, bool fullscreen) {
     MainThreadDispatcher::dispatch_sync([=]() {
         auto it = g_displayWindows.find(displayWindowId);
@@ -6545,7 +6545,7 @@ static LRESULT CALLBACK DimOverlayProc(HWND hwnd, UINT msg, WPARAM wParam, LPARA
     }
 }
 
-ELECTROBUN_EXPORT void createMasterDimOverlay(uint32_t sourceWindowId, uint8_t alpha) {
+CHROMEYUMM_EXPORT void createMasterDimOverlay(uint32_t sourceWindowId, uint8_t alpha) {
     MainThreadDispatcher::dispatch_sync([=]() {
         if (g_dimOverlayHwnd) return; // already created
 
@@ -6590,14 +6590,14 @@ ELECTROBUN_EXPORT void createMasterDimOverlay(uint32_t sourceWindowId, uint8_t a
     });
 }
 
-ELECTROBUN_EXPORT void setMasterDimOverlayVisible(bool visible) {
+CHROMEYUMM_EXPORT void setMasterDimOverlayVisible(bool visible) {
     MainThreadDispatcher::dispatch_sync([=]() {
         if (!g_dimOverlayHwnd) return;
         ShowWindow(g_dimOverlayHwnd, visible ? SW_SHOW : SW_HIDE);
     });
 }
 
-ELECTROBUN_EXPORT void destroyMasterDimOverlay() {
+CHROMEYUMM_EXPORT void destroyMasterDimOverlay() {
     MainThreadDispatcher::dispatch_sync([=]() {
         if (g_dimOverlayHwnd) {
             DestroyWindow(g_dimOverlayHwnd);
@@ -6620,7 +6620,7 @@ ELECTROBUN_EXPORT void destroyMasterDimOverlay() {
 //
 // The BrowserWindow must have been created with spout:true (OSR mode).
 // Then call addD3DOutputSlot() for each NativeDisplayWindow.
-ELECTROBUN_EXPORT bool startD3DOutput(uint32_t webviewId) {
+CHROMEYUMM_EXPORT bool startD3DOutput(uint32_t webviewId) {
     auto it = g_spoutWindows.find(webviewId);
     if (it == g_spoutWindows.end()) {
         ::log("D3DOutput: no SpoutWindowState for webviewId " + std::to_string(webviewId) +
@@ -6697,7 +6697,7 @@ ELECTROBUN_EXPORT bool startD3DOutput(uint32_t webviewId) {
 // hwnd is resolved from g_displayWindows[displayWindowId].
 // The swap chain is sized to srcW×srcH (the NDW's client area).
 // Must be called after startD3DOutput() and createNativeDisplayWindow().
-ELECTROBUN_EXPORT bool addD3DOutputSlot(uint32_t webviewId, uint32_t displayWindowId,
+CHROMEYUMM_EXPORT bool addD3DOutputSlot(uint32_t webviewId, uint32_t displayWindowId,
                                          int srcX, int srcY, int srcW, int srcH) {
     // Get the D3D11 device from the SpoutWindowState (populated by startD3DOutput).
     auto spoutIt = g_spoutWindows.find(webviewId);
@@ -6741,7 +6741,7 @@ ELECTROBUN_EXPORT bool addD3DOutputSlot(uint32_t webviewId, uint32_t displayWind
 }
 
 // Stop D3D output, release all NDW swap chains, and tear down the SpoutWindowState device.
-ELECTROBUN_EXPORT void stopD3DOutput(uint32_t webviewId) {
+CHROMEYUMM_EXPORT void stopD3DOutput(uint32_t webviewId) {
     // Release NDW swap chains.
     auto itD3D = g_d3dOutputStates.find(webviewId);
     if (itD3D != g_d3dOutputStates.end()) {
@@ -6782,7 +6782,7 @@ ELECTROBUN_EXPORT void stopD3DOutput(uint32_t webviewId) {
 // webviewId: the webviewId of the BrowserWindow created with spout:true.
 // senderName: Spout sender name visible to receivers (TouchDesigner, Resolume, etc.).
 // Returns true if the sender was successfully started.
-ELECTROBUN_EXPORT bool startSpoutSender(uint32_t webviewId, const char* senderName) {
+CHROMEYUMM_EXPORT bool startSpoutSender(uint32_t webviewId, const char* senderName) {
     auto it = g_spoutWindows.find(webviewId);
     if (it == g_spoutWindows.end()) {
         ::log("Spout: no state for webviewId " + std::to_string(webviewId));
@@ -6796,7 +6796,7 @@ ELECTROBUN_EXPORT bool startSpoutSender(uint32_t webviewId, const char* senderNa
         return false;
     }
 
-#if ELECTROBUN_HAS_SPOUT
+#if CHROMEYUMM_HAS_SPOUT
     // Create the D3D11 device. OnAcceleratedPaint uses this to open the DXGI NT shared
     // handle that CEF's GPU compositor writes each frame to (OpenSharedResource1).
     D3D_FEATURE_LEVEL featureLevel;
@@ -6823,7 +6823,7 @@ ELECTROBUN_EXPORT bool startSpoutSender(uint32_t webviewId, const char* senderNa
     }
 
     // Initialise SpoutDX on the same D3D11 device so SendTexture works without a copy.
-    const char* name = senderName ? senderName : "ElectrobunSpout";
+    const char* name = senderName ? senderName : "ChromeyummSpout";
     state.sender = new spoutDX();
     if (!state.sender->OpenDirectX11(state.d3dDevice)) {
         ::log("Spout: OpenDirectX11 failed");
@@ -6872,7 +6872,7 @@ ELECTROBUN_EXPORT bool startSpoutSender(uint32_t webviewId, const char* senderNa
 }
 
 // Stop the Spout sender for the given webviewId.
-ELECTROBUN_EXPORT void stopSpoutSender(uint32_t webviewId) {
+CHROMEYUMM_EXPORT void stopSpoutSender(uint32_t webviewId) {
     auto it = g_spoutWindows.find(webviewId);
     if (it == g_spoutWindows.end()) return;
     auto& state = it->second;
@@ -6880,7 +6880,7 @@ ELECTROBUN_EXPORT void stopSpoutSender(uint32_t webviewId) {
     // Disable first so OnAcceleratedPaint stops forwarding frames.
     state.active = false;
 
-#if ELECTROBUN_HAS_SPOUT
+#if CHROMEYUMM_HAS_SPOUT
     if (state.sender) {
         state.sender->ReleaseSender();
         delete state.sender;
@@ -6898,8 +6898,8 @@ ELECTROBUN_EXPORT void stopSpoutSender(uint32_t webviewId) {
 // Spout input receiver exports
 // ---------------------------------------------------------------------------
 
-ELECTROBUN_EXPORT uint32_t startSpoutReceiver(const char* senderName) {
-#if ELECTROBUN_HAS_SPOUT
+CHROMEYUMM_EXPORT uint32_t startSpoutReceiver(const char* senderName) {
+#if CHROMEYUMM_HAS_SPOUT
     auto* state = new SpoutInputState();
     state->senderName = senderName ? senderName : "";
 
@@ -6982,13 +6982,13 @@ ELECTROBUN_EXPORT uint32_t startSpoutReceiver(const char* senderName) {
 #endif
 }
 
-ELECTROBUN_EXPORT void stopSpoutReceiver(uint32_t receiverId) {
+CHROMEYUMM_EXPORT void stopSpoutReceiver(uint32_t receiverId) {
     auto it = g_spoutReceivers.find(receiverId);
     if (it == g_spoutReceivers.end()) return;
     auto* state = it->second;
     state->active = false;
     if (state->recvThread.joinable()) state->recvThread.join();
-#if ELECTROBUN_HAS_SPOUT
+#if CHROMEYUMM_HAS_SPOUT
     if (state->receiver) { state->receiver->ReleaseReceiver(); delete state->receiver; }
 #endif
     if (state->stagingTex)   state->stagingTex->Release();
@@ -7006,7 +7006,7 @@ ELECTROBUN_EXPORT void stopSpoutReceiver(uint32_t receiverId) {
 // exposes it to JavaScript as window.__spoutFrameBuffer (an ArrayBuffer).
 // Layout: [0-3] seq(Int32) | [4-7] width(Uint32) | [8-11] height(Uint32)
 //         | [12-15] reserved | [16+] BGRA pixels
-ELECTROBUN_EXPORT const char* getSpoutReceiverMappingName(uint32_t receiverId) {
+CHROMEYUMM_EXPORT const char* getSpoutReceiverMappingName(uint32_t receiverId) {
     auto it = g_spoutReceivers.find(receiverId);
     if (it == g_spoutReceivers.end()) return "";
     return it->second->mappingName.c_str();
@@ -7016,7 +7016,7 @@ ELECTROBUN_EXPORT const char* getSpoutReceiverMappingName(uint32_t receiverId) {
 // Called from Bun (browser process) to serve frame data via HTTP to the renderer.
 // Returns the number of bytes written (header + pixels), or 0 if no frame available.
 // outBuf must be at least SpoutInputState::kMappedSize bytes.
-ELECTROBUN_EXPORT int spoutReadFrame(uint32_t receiverId, uint8_t* outBuf, uint32_t bufSize) {
+CHROMEYUMM_EXPORT int spoutReadFrame(uint32_t receiverId, uint8_t* outBuf, uint32_t bufSize) {
     auto it = g_spoutReceivers.find(receiverId);
     if (it == g_spoutReceivers.end() || !it->second || !it->second->mappedPtr) return 0;
     uint8_t* src = (uint8_t*)it->second->mappedPtr;
@@ -7032,7 +7032,7 @@ ELECTROBUN_EXPORT int spoutReadFrame(uint32_t receiverId, uint8_t* outBuf, uint3
 // Returns the current seq counter from shared memory without copying pixel data.
 // Used by the Bun poll loop to detect new frames cheaply before calling spoutReadFrame.
 // Returns -1 if the receiver is not found or not initialized.
-ELECTROBUN_EXPORT int32_t getSpoutReceiverSeq(uint32_t receiverId) {
+CHROMEYUMM_EXPORT int32_t getSpoutReceiverSeq(uint32_t receiverId) {
     auto it = g_spoutReceivers.find(receiverId);
     if (it == g_spoutReceivers.end() || !it->second || !it->second->mappedPtr) return -1;
     return *(volatile int32_t*)it->second->mappedPtr;
@@ -7040,37 +7040,37 @@ ELECTROBUN_EXPORT int32_t getSpoutReceiverSeq(uint32_t receiverId) {
 
 // ---------------------------------------------------------------------------
 
-ELECTROBUN_EXPORT void setWindowVisibleOnAllWorkspaces(NSWindow *window, bool visible) {
+CHROMEYUMM_EXPORT void setWindowVisibleOnAllWorkspaces(NSWindow *window, bool visible) {
     // Not applicable on Windows - no-op
 }
 
-ELECTROBUN_EXPORT bool isWindowVisibleOnAllWorkspaces(NSWindow *window) {
+CHROMEYUMM_EXPORT bool isWindowVisibleOnAllWorkspaces(NSWindow *window) {
     // Not applicable on Windows
     return false;
 }
 
-ELECTROBUN_EXPORT void setWindowPosition(NSWindow *window, double x, double y) {
+CHROMEYUMM_EXPORT void setWindowPosition(NSWindow *window, double x, double y) {
     HWND hwnd = reinterpret_cast<HWND>(window);
     if (!IsWindow(hwnd)) return;
 
     SetWindowPos(hwnd, NULL, (int)x, (int)y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-ELECTROBUN_EXPORT void setWindowSize(NSWindow *window, double width, double height) {
+CHROMEYUMM_EXPORT void setWindowSize(NSWindow *window, double width, double height) {
     HWND hwnd = reinterpret_cast<HWND>(window);
     if (!IsWindow(hwnd)) return;
 
     SetWindowPos(hwnd, NULL, 0, 0, (int)width, (int)height, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-ELECTROBUN_EXPORT void setWindowFrame(NSWindow *window, double x, double y, double width, double height) {
+CHROMEYUMM_EXPORT void setWindowFrame(NSWindow *window, double x, double y, double width, double height) {
     HWND hwnd = reinterpret_cast<HWND>(window);
     if (!IsWindow(hwnd)) return;
 
     SetWindowPos(hwnd, NULL, (int)x, (int)y, (int)width, (int)height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-ELECTROBUN_EXPORT void getWindowFrame(NSWindow *window, double *outX, double *outY, double *outWidth, double *outHeight) {
+CHROMEYUMM_EXPORT void getWindowFrame(NSWindow *window, double *outX, double *outY, double *outWidth, double *outHeight) {
     HWND hwnd = reinterpret_cast<HWND>(window);
     if (!IsWindow(hwnd)) {
         *outX = 0;
@@ -7088,7 +7088,7 @@ ELECTROBUN_EXPORT void getWindowFrame(NSWindow *window, double *outX, double *ou
     *outHeight = (double)(rect.bottom - rect.top);
 }
 
-ELECTROBUN_EXPORT void resizeWebview(AbstractView *abstractView, double x, double y, double width, double height, const char *masksJson) {
+CHROMEYUMM_EXPORT void resizeWebview(AbstractView *abstractView, double x, double y, double width, double height, const char *masksJson) {
     if (!abstractView) {
         ::log("ERROR: Invalid AbstractView in resizeWebview");
         return;
@@ -7105,7 +7105,7 @@ ELECTROBUN_EXPORT void resizeWebview(AbstractView *abstractView, double x, doubl
 
 
 
-ELECTROBUN_EXPORT void stopWindowMove() {
+CHROMEYUMM_EXPORT void stopWindowMove() {
     if (g_isMovingWindow) {
         // Unregister raw input device
         RAWINPUTDEVICE rid;
@@ -7120,7 +7120,7 @@ ELECTROBUN_EXPORT void stopWindowMove() {
     }
 }
 
-ELECTROBUN_EXPORT void startWindowMove(NSWindow *window) {
+CHROMEYUMM_EXPORT void startWindowMove(NSWindow *window) {
     // On Windows, NSWindow* is actually HWND
     HWND hwnd = reinterpret_cast<HWND>(window);
     
@@ -7154,7 +7154,7 @@ ELECTROBUN_EXPORT void startWindowMove(NSWindow *window) {
     }
 }
 
-ELECTROBUN_EXPORT BOOL moveToTrash(char *pathString) {
+CHROMEYUMM_EXPORT BOOL moveToTrash(char *pathString) {
     if (!pathString) {
         ::log("ERROR: NULL path string passed to moveToTrash");
         return FALSE;
@@ -7193,7 +7193,7 @@ ELECTROBUN_EXPORT BOOL moveToTrash(char *pathString) {
     }
 }
 
-ELECTROBUN_EXPORT void showItemInFolder(char *path) {
+CHROMEYUMM_EXPORT void showItemInFolder(char *path) {
     if (!path) {
         ::log("ERROR: NULL path passed to showItemInFolder");
         return;
@@ -7236,7 +7236,7 @@ ELECTROBUN_EXPORT void showItemInFolder(char *path) {
 }
 
 // Open a URL in the default browser or appropriate application
-ELECTROBUN_EXPORT BOOL openExternal(const char *urlString) {
+CHROMEYUMM_EXPORT BOOL openExternal(const char *urlString) {
     if (!urlString) {
         ::log("ERROR: NULL URL passed to openExternal");
         return FALSE;
@@ -7278,7 +7278,7 @@ ELECTROBUN_EXPORT BOOL openExternal(const char *urlString) {
 }
 
 // Open a file or folder with the default application
-ELECTROBUN_EXPORT BOOL openPath(const char *pathString) {
+CHROMEYUMM_EXPORT BOOL openPath(const char *pathString) {
     if (!pathString) {
         ::log("ERROR: NULL path passed to openPath");
         return FALSE;
@@ -7320,7 +7320,7 @@ ELECTROBUN_EXPORT BOOL openPath(const char *pathString) {
 }
 
 // Show a native desktop notification using Shell_NotifyIcon balloon
-ELECTROBUN_EXPORT void showNotification(const char *title, const char *body, const char *subtitle, BOOL silent) {
+CHROMEYUMM_EXPORT void showNotification(const char *title, const char *body, const char *subtitle, BOOL silent) {
     if (!title) {
         ::log("ERROR: NULL title passed to showNotification");
         return;
@@ -7387,7 +7387,7 @@ ELECTROBUN_EXPORT void showNotification(const char *title, const char *body, con
     ::log("Notification shown: " + std::string(title));
 }
 
-ELECTROBUN_EXPORT const char* openFileDialog(const char *startingFolder,
+CHROMEYUMM_EXPORT const char* openFileDialog(const char *startingFolder,
                           const char *allowedFileTypes,
                           BOOL canChooseFiles,
                           BOOL canChooseDirectories,
@@ -7556,7 +7556,7 @@ ELECTROBUN_EXPORT const char* openFileDialog(const char *startingFolder,
     return strdup(result.c_str());
 }
 
-ELECTROBUN_EXPORT int showMessageBox(const char *type,
+CHROMEYUMM_EXPORT int showMessageBox(const char *type,
                                      const char *title,
                                      const char *message,
                                      const char *detail,
@@ -7660,7 +7660,7 @@ ELECTROBUN_EXPORT int showMessageBox(const char *type,
 
 // clipboardReadText - Read text from the system clipboard
 // Returns: UTF-8 string (caller must free) or NULL if no text available
-ELECTROBUN_EXPORT const char* clipboardReadText() {
+CHROMEYUMM_EXPORT const char* clipboardReadText() {
     return MainThreadDispatcher::dispatch_sync([=]() -> const char* {
         if (!OpenClipboard(nullptr)) {
             return nullptr;
@@ -7688,7 +7688,7 @@ ELECTROBUN_EXPORT const char* clipboardReadText() {
 }
 
 // clipboardWriteText - Write text to the system clipboard
-ELECTROBUN_EXPORT void clipboardWriteText(const char* text) {
+CHROMEYUMM_EXPORT void clipboardWriteText(const char* text) {
     if (!text) return;
 
     MainThreadDispatcher::dispatch_sync([=]() {
@@ -7716,7 +7716,7 @@ ELECTROBUN_EXPORT void clipboardWriteText(const char* text) {
 
 // clipboardReadImage - Read image from clipboard as PNG data
 // Returns: PNG data (caller must free) and sets outSize, or NULL if no image
-ELECTROBUN_EXPORT const uint8_t* clipboardReadImage(size_t* outSize) {
+CHROMEYUMM_EXPORT const uint8_t* clipboardReadImage(size_t* outSize) {
     return MainThreadDispatcher::dispatch_sync([=]() -> const uint8_t* {
         if (outSize) *outSize = 0;
 
@@ -7749,7 +7749,7 @@ ELECTROBUN_EXPORT const uint8_t* clipboardReadImage(size_t* outSize) {
 }
 
 // clipboardWriteImage - Write PNG image data to clipboard
-ELECTROBUN_EXPORT void clipboardWriteImage(const uint8_t* pngData, size_t size) {
+CHROMEYUMM_EXPORT void clipboardWriteImage(const uint8_t* pngData, size_t size) {
     if (!pngData || size == 0) return;
 
     MainThreadDispatcher::dispatch_sync([=]() {
@@ -7777,7 +7777,7 @@ ELECTROBUN_EXPORT void clipboardWriteImage(const uint8_t* pngData, size_t size) 
 }
 
 // clipboardClear - Clear the clipboard
-ELECTROBUN_EXPORT void clipboardClear() {
+CHROMEYUMM_EXPORT void clipboardClear() {
     MainThreadDispatcher::dispatch_sync([=]() {
         if (OpenClipboard(nullptr)) {
             EmptyClipboard();
@@ -7788,7 +7788,7 @@ ELECTROBUN_EXPORT void clipboardClear() {
 
 // clipboardAvailableFormats - Get available formats in clipboard
 // Returns: comma-separated list of formats (caller must free)
-ELECTROBUN_EXPORT const char* clipboardAvailableFormats() {
+CHROMEYUMM_EXPORT const char* clipboardAvailableFormats() {
     return MainThreadDispatcher::dispatch_sync([=]() -> const char* {
         if (!OpenClipboard(nullptr)) {
             return strdup("");
@@ -7921,7 +7921,7 @@ LRESULT CALLBACK TrayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lPara
     return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
-ELECTROBUN_EXPORT NSStatusItem* createTray(uint32_t trayId, const char *title, const char *pathToImage, bool isTemplate,
+CHROMEYUMM_EXPORT NSStatusItem* createTray(uint32_t trayId, const char *title, const char *pathToImage, bool isTemplate,
                         uint32_t width, uint32_t height, ZigStatusItemHandler zigTrayItemHandler) {
     
     return MainThreadDispatcher::dispatch_sync([=]() -> NSStatusItem* {
@@ -8047,7 +8047,7 @@ ELECTROBUN_EXPORT NSStatusItem* createTray(uint32_t trayId, const char *title, c
     });
 }
 
-ELECTROBUN_EXPORT void setTrayTitle(NSStatusItem *statusItem, const char *title) {
+CHROMEYUMM_EXPORT void setTrayTitle(NSStatusItem *statusItem, const char *title) {
     if (!statusItem) return;
     
     MainThreadDispatcher::dispatch_sync([=]() {
@@ -8065,7 +8065,7 @@ ELECTROBUN_EXPORT void setTrayTitle(NSStatusItem *statusItem, const char *title)
     });
 }
 
-ELECTROBUN_EXPORT void setTrayImage(NSStatusItem *statusItem, const char *image) {
+CHROMEYUMM_EXPORT void setTrayImage(NSStatusItem *statusItem, const char *image) {
     if (!statusItem) return;
     
     MainThreadDispatcher::dispatch_sync([=]() {
@@ -8106,7 +8106,7 @@ ELECTROBUN_EXPORT void setTrayImage(NSStatusItem *statusItem, const char *image)
 }
 
 // Updated setTrayMenuFromJSON function
-ELECTROBUN_EXPORT void setTrayMenuFromJSON(NSStatusItem *statusItem, const char *jsonString) {
+CHROMEYUMM_EXPORT void setTrayMenuFromJSON(NSStatusItem *statusItem, const char *jsonString) {
     if (!statusItem || !jsonString) return;
         
     MainThreadDispatcher::dispatch_sync([=]() {
@@ -8195,12 +8195,12 @@ void handleTrayIconMessage(HWND hwnd, WPARAM wParam, LPARAM lParam) {
     }
 }
 
-ELECTROBUN_EXPORT void setTrayMenu(NSStatusItem *statusItem, const char *menuConfig) {
+CHROMEYUMM_EXPORT void setTrayMenu(NSStatusItem *statusItem, const char *menuConfig) {
     // Delegate to JSON version for now
     setTrayMenuFromJSON(statusItem, menuConfig);
 }
 
-ELECTROBUN_EXPORT void removeTray(NSStatusItem *statusItem) {
+CHROMEYUMM_EXPORT void removeTray(NSStatusItem *statusItem) {
     if (!statusItem) return;
     
     MainThreadDispatcher::dispatch_sync([=]() {
@@ -8212,12 +8212,12 @@ ELECTROBUN_EXPORT void removeTray(NSStatusItem *statusItem) {
     });
 }
 
-ELECTROBUN_EXPORT const char* getTrayBounds(NSStatusItem *statusItem) {
+CHROMEYUMM_EXPORT const char* getTrayBounds(NSStatusItem *statusItem) {
     (void)statusItem;
     return _strdup("{\"x\":0,\"y\":0,\"width\":0,\"height\":0}");
 }
 
-ELECTROBUN_EXPORT void setApplicationMenu(const char *jsonString, ZigStatusItemHandler zigTrayItemHandler) {
+CHROMEYUMM_EXPORT void setApplicationMenu(const char *jsonString, ZigStatusItemHandler zigTrayItemHandler) {
     if (!jsonString) {
         ::log("ERROR: NULL JSON string passed to setApplicationMenu");
         return;
@@ -8289,7 +8289,7 @@ ELECTROBUN_EXPORT void setApplicationMenu(const char *jsonString, ZigStatusItemH
 }
 
 
-ELECTROBUN_EXPORT void showContextMenu(const char *jsonString, ZigStatusItemHandler contextMenuHandler) {
+CHROMEYUMM_EXPORT void showContextMenu(const char *jsonString, ZigStatusItemHandler contextMenuHandler) {
     if (!jsonString) {
         ::log("ERROR: NULL JSON string passed to showContextMenu");
         return;
@@ -8352,7 +8352,7 @@ ELECTROBUN_EXPORT void showContextMenu(const char *jsonString, ZigStatusItemHand
     });
 }
 
-ELECTROBUN_EXPORT void getWebviewSnapshot(uint32_t hostId, uint32_t webviewId,
+CHROMEYUMM_EXPORT void getWebviewSnapshot(uint32_t hostId, uint32_t webviewId,
                        WKWebView *webView,
                        zigSnapshotCallback callback) {
     // Stub implementation
@@ -8362,13 +8362,13 @@ ELECTROBUN_EXPORT void getWebviewSnapshot(uint32_t hostId, uint32_t webviewId,
     }
 }
 
-ELECTROBUN_EXPORT void setJSUtils(GetMimeType getMimeType, GetHTMLForWebviewSync getHTMLForWebviewSync) {
+CHROMEYUMM_EXPORT void setJSUtils(GetMimeType getMimeType, GetHTMLForWebviewSync getHTMLForWebviewSync) {
     ::log("setJSUtils called but using map-based approach instead of callbacks");
 }
 
 // MARK: - Webview HTML Content Management (replaces JSCallback approach)
 
-extern "C" ELECTROBUN_EXPORT void setWebviewHTMLContent(uint32_t webviewId, const char* htmlContent) {
+extern "C" CHROMEYUMM_EXPORT void setWebviewHTMLContent(uint32_t webviewId, const char* htmlContent) {
     std::lock_guard<std::mutex> lock(webviewHTMLMutex);
     if (htmlContent) {
         webviewHTMLContent[webviewId] = std::string(htmlContent);
@@ -8383,7 +8383,7 @@ extern "C" ELECTROBUN_EXPORT void setWebviewHTMLContent(uint32_t webviewId, cons
     }
 }
 
-extern "C" ELECTROBUN_EXPORT const char* getWebviewHTMLContent(uint32_t webviewId) {
+extern "C" CHROMEYUMM_EXPORT const char* getWebviewHTMLContent(uint32_t webviewId) {
     std::lock_guard<std::mutex> lock(webviewHTMLMutex);
     auto it = webviewHTMLContent.find(webviewId);
     if (it != webviewHTMLContent.end()) {
@@ -8401,7 +8401,7 @@ extern "C" ELECTROBUN_EXPORT const char* getWebviewHTMLContent(uint32_t webviewI
 }
 
 // Adding a few Windows-specific functions for interop if needed
-ELECTROBUN_EXPORT uint32_t getWindowStyle(
+CHROMEYUMM_EXPORT uint32_t getWindowStyle(
     bool Borderless,
     bool Titled,
     bool Closable,
@@ -8606,7 +8606,7 @@ static UINT getVirtualKeyCode(const std::string& key) {
 // Parse modifiers from accelerator string for global shortcuts using the
 // shared cross-platform parser. Returns MOD_CONTROL, MOD_ALT, MOD_SHIFT flags.
 static UINT parseModifiers(const std::string& accelerator, std::string& outKey) {
-    auto parts = electrobun::parseAccelerator(accelerator);
+    auto parts = chromeyumm::parseAccelerator(accelerator);
     outKey = parts.key;
 
     UINT modifiers = 0;
@@ -8727,11 +8727,11 @@ static void hotkeyMessageLoop() {
     wc.cbSize = sizeof(WNDCLASSEXW);
     wc.lpfnWndProc = HotkeyWndProc;
     wc.hInstance = GetModuleHandle(NULL);
-    wc.lpszClassName = L"ElectrobunHotkeyWindow";
+    wc.lpszClassName = L"ChromeyummHotkeyWindow";
 
     RegisterClassExW(&wc);
 
-    g_hotkeyWindow = CreateWindowExW(0, L"ElectrobunHotkeyWindow", L"",
+    g_hotkeyWindow = CreateWindowExW(0, L"ChromeyummHotkeyWindow", L"",
         0, 0, 0, 0, 0, HWND_MESSAGE, NULL, GetModuleHandle(NULL), NULL);
 
     if (!g_hotkeyWindow) {
@@ -8760,7 +8760,7 @@ static void hotkeyMessageLoop() {
 }
 
 // Set the callback for global shortcut events
-extern "C" ELECTROBUN_EXPORT void setGlobalShortcutCallback(GlobalShortcutCallback callback) {
+extern "C" CHROMEYUMM_EXPORT void setGlobalShortcutCallback(GlobalShortcutCallback callback) {
     g_globalShortcutCallback = callback;
 
     // Start the hotkey message loop thread if not running
@@ -8775,7 +8775,7 @@ extern "C" ELECTROBUN_EXPORT void setGlobalShortcutCallback(GlobalShortcutCallba
 }
 
 // Register a global keyboard shortcut
-extern "C" ELECTROBUN_EXPORT BOOL registerGlobalShortcut(const char* accelerator) {
+extern "C" CHROMEYUMM_EXPORT BOOL registerGlobalShortcut(const char* accelerator) {
     if (!accelerator) {
         ::log("ERROR: Cannot register shortcut - invalid accelerator");
         return FALSE;
@@ -8847,7 +8847,7 @@ extern "C" ELECTROBUN_EXPORT BOOL registerGlobalShortcut(const char* accelerator
 }
 
 // Unregister a global keyboard shortcut
-extern "C" ELECTROBUN_EXPORT BOOL unregisterGlobalShortcut(const char* accelerator) {
+extern "C" CHROMEYUMM_EXPORT BOOL unregisterGlobalShortcut(const char* accelerator) {
     if (!accelerator) return FALSE;
 
     std::string accelStr(accelerator);
@@ -8873,14 +8873,14 @@ extern "C" ELECTROBUN_EXPORT BOOL unregisterGlobalShortcut(const char* accelerat
 }
 
 // Unregister all global keyboard shortcuts
-extern "C" ELECTROBUN_EXPORT void unregisterAllGlobalShortcuts() {
+extern "C" CHROMEYUMM_EXPORT void unregisterAllGlobalShortcuts() {
     if (g_hotkeyWindow) {
         PostMessage(g_hotkeyWindow, WM_UNREGISTER_ALL_HOTKEYS, 0, 0);
     }
 }
 
 // Check if a shortcut is registered
-extern "C" ELECTROBUN_EXPORT BOOL isGlobalShortcutRegistered(const char* accelerator) {
+extern "C" CHROMEYUMM_EXPORT BOOL isGlobalShortcutRegistered(const char* accelerator) {
     if (!accelerator) return FALSE;
 
     std::string accelStr(accelerator);
@@ -8957,7 +8957,7 @@ static BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT l
 }
 
 // Get all displays as JSON array
-extern "C" ELECTROBUN_EXPORT const char* getAllDisplays() {
+extern "C" CHROMEYUMM_EXPORT const char* getAllDisplays() {
     MonitorEnumData data;
 
     EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, reinterpret_cast<LPARAM>(&data));
@@ -9032,7 +9032,7 @@ static BOOL CALLBACK PrimaryMonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, L
 }
 
 // Get primary display as JSON
-extern "C" ELECTROBUN_EXPORT const char* getPrimaryDisplay() {
+extern "C" CHROMEYUMM_EXPORT const char* getPrimaryDisplay() {
     PrimaryMonitorData data;
     data.found = false;
 
@@ -9046,7 +9046,7 @@ extern "C" ELECTROBUN_EXPORT const char* getPrimaryDisplay() {
 }
 
 // Get current cursor position as JSON: {"x": 123, "y": 456}
-extern "C" ELECTROBUN_EXPORT const char* getCursorScreenPoint() {
+extern "C" CHROMEYUMM_EXPORT const char* getCursorScreenPoint() {
     POINT cursorPos;
     if (GetCursorPos(&cursorPos)) {
         std::ostringstream json;
@@ -9057,7 +9057,7 @@ extern "C" ELECTROBUN_EXPORT const char* getCursorScreenPoint() {
     return _strdup("{\"x\":0,\"y\":0}");
 }
 
-extern "C" ELECTROBUN_EXPORT uint64_t getMouseButtons() {
+extern "C" CHROMEYUMM_EXPORT uint64_t getMouseButtons() {
     uint64_t buttons = 0;
     if (GetAsyncKeyState(VK_LBUTTON) & 0x8000) buttons |= 1ull << 0;
     if (GetAsyncKeyState(VK_RBUTTON) & 0x8000) buttons |= 1ull << 1;
@@ -9067,25 +9067,25 @@ extern "C" ELECTROBUN_EXPORT uint64_t getMouseButtons() {
 
 
 // URL scheme handler - macOS only, stub for Windows
-extern "C" ELECTROBUN_EXPORT void setURLOpenHandler(void (*callback)(const char*)) {
+extern "C" CHROMEYUMM_EXPORT void setURLOpenHandler(void (*callback)(const char*)) {
     (void)callback;
     // Not supported on Windows - stub to prevent dlopen failure
     // Windows URL protocol handling is done via registry
 }
 
 // App reopen handler - macOS only, stub for Windows
-extern "C" ELECTROBUN_EXPORT void setAppReopenHandler(void (*callback)()) {
+extern "C" CHROMEYUMM_EXPORT void setAppReopenHandler(void (*callback)()) {
     (void)callback;
     // Not supported on Windows - stub to prevent dlopen failure
 }
 
 // Dock icon visibility - macOS only, stubs for Windows
-extern "C" ELECTROBUN_EXPORT void setDockIconVisible(bool visible) {
+extern "C" CHROMEYUMM_EXPORT void setDockIconVisible(bool visible) {
     (void)visible;
     // Not supported on Windows - stub to prevent dlopen failure
 }
 
-extern "C" ELECTROBUN_EXPORT bool isDockIconVisible() {
+extern "C" CHROMEYUMM_EXPORT bool isDockIconVisible() {
     // Not supported on Windows
     return true;
 }

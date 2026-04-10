@@ -81,7 +81,7 @@ export const native = (() => {
           FFIType.function, // eventBridgeHandler (renderer process IPC, JSON-formatted)
           FFIType.function, // bunBridgePostmessageHandler (null — no RPC)
           FFIType.function, // internalBridgeHandler (null — no RPC)
-          FFIType.cstring, // electrobunPreloadScript
+          FFIType.cstring, // preloadScript
           FFIType.cstring, // customPreloadScript
           FFIType.cstring, // viewsRoot
           FFIType.bool, // transparent

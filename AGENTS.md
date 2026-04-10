@@ -26,7 +26,7 @@ bun scripts/release.ts    # package release zip
 | `src/app/` | Application entry point, config loader, Spout input lifecycle |
 | `src/components/` | Reusable web components (debug panel, slot overlay, Spout receiver) |
 | `src/views/` | Example views (Three.js, R3F, Spout demos) — served via dev servers, not bundled |
-| `build.ts` | Build script (replaces Electrobun CLI) |
+| `build.ts` | Build script |
 | `scripts/release.ts` | Release packaging — version bump, zip, GitHub publish |
 | `.github/workflows/release.yml` | CI: build + release on `v*` tag push |
 | `display-config.json` | Display layout, canvas size, content URL, Spout settings |

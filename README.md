@@ -85,7 +85,7 @@ native/
   vendor/                CEF + Spout vendor dirs (gitignored — see native/README.md)
 
 src/
-  chromeyumm/            Framework layer (replaces electrobun/bun)
+  chromeyumm/            Framework layer
     ffi.ts               Bun FFI bindings to libNativeWrapper.dll
     browser-window.ts    BrowserWindow class
     native-display-window.ts  NativeDisplayWindow class
@@ -103,7 +103,7 @@ src/
     spout-demo/          Spout input demo
     spout-video/         Video + Spout demo
 
-build.ts                 Build script (replaces Electrobun CLI)
+build.ts                 Build script
 display-config.json      Display layout config
 ```
 

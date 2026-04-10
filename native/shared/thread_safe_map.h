@@ -4,8 +4,8 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_THREAD_SAFE_MAP_H
-#define ELECTROBUN_THREAD_SAFE_MAP_H
+#ifndef CHROMEYUMM_THREAD_SAFE_MAP_H
+#define CHROMEYUMM_THREAD_SAFE_MAP_H
 
 #include <map>
 #include <mutex>
@@ -13,7 +13,7 @@
 #include <optional>
 #include <vector>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Thread-safe wrapper around std::map
 // Provides synchronized access to key-value storage
@@ -133,6 +133,6 @@ private:
     std::map<KeyType, ValueType> map_;
 };
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_THREAD_SAFE_MAP_H
+#endif // CHROMEYUMM_THREAD_SAFE_MAP_H

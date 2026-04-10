@@ -4,13 +4,13 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_CONFIG_H
-#define ELECTROBUN_CONFIG_H
+#ifndef CHROMEYUMM_CONFIG_H
+#define CHROMEYUMM_CONFIG_H
 
 #include <string>
 #include <mutex>
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Thread-safe configuration singleton
 class Config {
@@ -61,6 +61,6 @@ private:
     std::string name_;
 };
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_CONFIG_H
+#endif // CHROMEYUMM_CONFIG_H

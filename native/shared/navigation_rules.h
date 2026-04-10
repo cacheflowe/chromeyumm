@@ -4,14 +4,14 @@
 //
 // This is a header-only implementation to avoid build complexity.
 
-#ifndef ELECTROBUN_NAVIGATION_RULES_H
-#define ELECTROBUN_NAVIGATION_RULES_H
+#ifndef CHROMEYUMM_NAVIGATION_RULES_H
+#define CHROMEYUMM_NAVIGATION_RULES_H
 
 #include <string>
 #include <vector>
 #include "glob_match.h"
 
-namespace electrobun {
+namespace chromeyumm {
 
 // Represents a single navigation rule
 // Rules starting with "^" are block rules (inverts the match)
@@ -93,6 +93,6 @@ inline bool checkNavigationRulesForUrl(const std::string& rulesString,
     return checkNavigationRulesForUrl(rules, url, defaultAllow);
 }
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_NAVIGATION_RULES_H
+#endif // CHROMEYUMM_NAVIGATION_RULES_H

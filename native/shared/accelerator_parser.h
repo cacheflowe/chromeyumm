@@ -2,14 +2,14 @@
 // Parses strings like "CommandOrControl+Shift+T" into modifier flags and a key.
 // Header-only to match the pattern of json_menu_parser.h.
 
-#ifndef ELECTROBUN_ACCELERATOR_PARSER_H
-#define ELECTROBUN_ACCELERATOR_PARSER_H
+#ifndef CHROMEYUMM_ACCELERATOR_PARSER_H
+#define CHROMEYUMM_ACCELERATOR_PARSER_H
 
 #include <string>
 #include <vector>
 #include <algorithm>
 
-namespace electrobun {
+namespace chromeyumm {
 
 struct AcceleratorParts {
     std::string key;                // The key, lowercased (e.g. "t", "f1", "space")
@@ -67,6 +67,6 @@ inline AcceleratorParts parseAccelerator(const std::string& accelerator) {
     return result;
 }
 
-} // namespace electrobun
+} // namespace chromeyumm
 
-#endif // ELECTROBUN_ACCELERATOR_PARSER_H
+#endif // CHROMEYUMM_ACCELERATOR_PARSER_H
