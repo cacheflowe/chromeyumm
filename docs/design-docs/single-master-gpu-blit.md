@@ -26,7 +26,7 @@ Single master browser with GPU blit via `CopySubresourceRegion`. The performance
 ## Implementation
 - Master `BrowserWindow` renders to full virtual canvas (e.g., 3840×1080 for two 1920×1080 displays)
 - Each `NativeDisplayWindow` is a bare Win32 HWND with a D3D11 swap chain
-- `OnAcceleratedPaint` iterates `D3DOutputSlot`s: `GetBuffer(0)` → clamp source box → `CopySubresourceRegion` → `Present`
+- `OnAcceleratedPaint` batch-copies all `D3DOutputSlot`s: `GetBuffer(0)` → clamp source box → `CopySubresourceRegion`, then `Flush()` → `Present(0, ALLOW_TEARING)` for all slots together
 - Source box clamping queries `D3D11_TEXTURE2D_DESC` on first frame to prevent out-of-bounds copies
 
 ## Consequences

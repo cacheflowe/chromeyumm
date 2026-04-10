@@ -19,9 +19,9 @@ Master BrowserWindow (OSR, shared_texture_enabled=1)
   │
   ▼ OpenSharedResource1 → ID3D11Texture2D
   │
-  ├── D3DOutputSlot[0]: CopySubresourceRegion(srcBox) → SwapChain[0] → Present
-  ├── D3DOutputSlot[1]: CopySubresourceRegion(srcBox) → SwapChain[1] → Present
-  └── D3DOutputSlot[N]: ...
+  ├── Phase 1: batch CopySubresourceRegion for all slots
+  ├── Flush() GPU command queue
+  └── Phase 2: Present(0, ALLOW_TEARING) all slots
 ```
 
 ## Configuration
@@ -56,6 +56,7 @@ Master BrowserWindow (OSR, shared_texture_enabled=1)
 - **Source box exceeds texture**: First-frame `D3D11_TEXTURE2D_DESC` query → clamp source coordinates. Logs out-of-bounds warning.
 - **Monitor topology change**: Must manually reset with Ctrl+Shift+M.
 - **DWM compositing overhead**: ~25% Intel GPU on Optimus. Inherent floor for N swap chains. Use Spout output for 0% Intel.
+- **Frame pacing**: All GPU copies are batched before any Present call, then Flush + Present(0, ALLOW_TEARING) to avoid per-slot vsync blocking and DWM interference (taskbar hover, focus changes).
 
 ## Out of Scope
 

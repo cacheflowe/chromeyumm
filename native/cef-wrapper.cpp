@@ -92,7 +92,7 @@ using namespace chromeyumm;
 #if __has_include("vendor/spout/include/SpoutDX/SpoutDX.h")
 #include "vendor/spout/include/SpoutDX/SpoutDX.h"
 #include <d3d11_1.h>    // ID3D11Device1::OpenSharedResource1 (for DXGI NT handles)
-#include <dxgi1_2.h>    // IDXGIFactory2, IDXGISwapChain1 (for DWM swap chain)
+#include <dxgi1_5.h>    // IDXGIFactory5 (tearing support), IDXGISwapChain1 (flip swap chain)
 #define CHROMEYUMM_HAS_SPOUT 1
 
 #else
@@ -308,6 +308,33 @@ static void spoutReceiverThreadFn(SpoutInputState* state) {
     }
 }
 
+// Helper: check if the DXGI factory supports ALLOW_TEARING (variable refresh).
+// When supported, Present(0, DXGI_PRESENT_ALLOW_TEARING) bypasses DWM vsync
+// entirely — eliminating stalls caused by DWM composition changes (taskbar
+// hover, focus changes, etc.).
+static bool checkTearingSupport() {
+    IDXGIFactory5* factory5 = nullptr;
+    HRESULT hr = CreateDXGIFactory1(__uuidof(IDXGIFactory5), (void**)&factory5);
+    if (FAILED(hr) || !factory5) return false;
+    BOOL allowTearing = FALSE;
+    hr = factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+                                       &allowTearing, sizeof(allowTearing));
+    factory5->Release();
+    return SUCCEEDED(hr) && allowTearing;
+}
+
+static bool g_tearingSupported = false;
+static bool g_tearingChecked   = false;
+
+static bool isTearingSupported() {
+    if (!g_tearingChecked) {
+        g_tearingSupported = checkTearingSupport();
+        g_tearingChecked = true;
+        ::log("DXGI: ALLOW_TEARING " + std::string(g_tearingSupported ? "supported" : "not supported"));
+    }
+    return g_tearingSupported;
+}
+
 // Helper: create a DXGI flip swap chain on an HWND for DWM thumbnailing.
 // In OSR mode CEF doesn't present to the HWND; we do it manually each frame
 // so DWM has a surface to thumbnail for the NativeDisplayWindow mirrors.
@@ -329,6 +356,9 @@ static IDXGISwapChain1* createSwapChainForHwnd(ID3D11Device* device, HWND hwnd, 
     desc.BufferCount = 2;
     desc.SwapEffect  = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     desc.AlphaMode   = DXGI_ALPHA_MODE_IGNORE;
+    if (isTearingSupported()) {
+        desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+    }
 
     IDXGISwapChain1* sc = nullptr;
     if (factory2) factory2->CreateSwapChainForHwnd(device, hwnd, &desc, nullptr, nullptr, &sc);
@@ -2223,6 +2253,11 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
         return;
     }
 
+    // Present flags: use ALLOW_TEARING when supported to bypass DWM vsync,
+    // preventing stalls caused by DWM composition changes (taskbar hover,
+    // focus loss, thumbnail generation).
+    const UINT presentFlags = isTearingSupported() ? DXGI_PRESENT_ALLOW_TEARING : 0;
+
     // 1. Blit to swap chain so DWM can thumbnail the master HWND for NDW display windows.
     if (state.swapChain) {
         ID3D11Texture2D* backBuf = nullptr;
@@ -2230,7 +2265,7 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
             state.d3dContext->CopyResource(backBuf, sharedTex);
             backBuf->Release();
         }
-        state.swapChain->Present(0, 0);
+        state.swapChain->Present(0, presentFlags);
     }
 
     // 2. Send to Spout receivers (TouchDesigner, Resolume, etc.)
@@ -2323,6 +2358,8 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
                 }
             }
 
+            // Phase 1: batch all GPU copies before any Present — avoids per-slot
+            // vsync blocking that desynchronizes multi-window output.
             for (auto& slot : itD3D->second.slots) {
                 if (!slot.swapChain) continue;
 
@@ -2341,7 +2378,6 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
                               ") is entirely outside " + std::to_string(texW) + "x" + std::to_string(texH) +
                               " texture — skipping (check display-config.json source rects)");
                     }
-                    slot.swapChain->Present(1, 0); // present black rather than stall
                     continue;
                 }
 
@@ -2351,7 +2387,18 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
                     state.d3dContext->CopySubresourceRegion(backBuf, 0, 0, 0, 0, sharedTex, 0, &box);
                     backBuf->Release();
                 }
-                slot.swapChain->Present(1, 0);
+            }
+
+            // Flush GPU command queue so all copies are committed before presenting.
+            state.d3dContext->Flush();
+
+            // Phase 2: present all slots without per-swap-chain vsync blocking.
+            // Present(0, ALLOW_TEARING) bypasses DWM entirely — no stalls from
+            // taskbar hover, focus changes, or DWM thumbnail generation.
+            // Falls back to Present(0, 0) if tearing not supported.
+            for (auto& slot : itD3D->second.slots) {
+                if (!slot.swapChain) continue;
+                slot.swapChain->Present(0, presentFlags);
             }
         }
     }

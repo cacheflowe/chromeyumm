@@ -26,8 +26,8 @@ Mode is set by presence/absence of `"spoutOutput"` in `display-config.json`.
 Master BrowserWindow (OSR, use-angle=d3d11, shared_texture_enabled=1)
   └── renders full virtual canvas (any size, no monitor boundary limit)
   └── OnAcceleratedPaint → DXGI NT shared texture handle every frame
-  └── CopySubresourceRegion(srcBox) → each NDW's D3D11 swap chain → Present
-  └── No DWM thumbnails; no monitor intersection requirement
+  └── Batch CopySubresourceRegion for all slots → Flush → Present(0, ALLOW_TEARING)
+  └── No per-slot vsync blocking; DWM composes independently
 
 NativeDisplayWindow × N (lightweight Win32 HWNDs)
   └── D3D11 swap chain per window; content driven by GPU blit from master OSR texture
@@ -98,7 +98,7 @@ This is `nativeWrapper.cpp` from the Electrobun fork, all additions are preserve
 - `D3DOutputSlot` struct: HWND, `IDXGISwapChain1*`, srcX/Y/W/H
 - `D3DOutputState` struct: D3D11 device/context, active flag, `vector<D3DOutputSlot>`
 - `g_d3dOutputStates` map (webviewId → D3DOutputState)
-- Extended `OnAcceleratedPaint`: after Spout block, iterates D3D output slots → `GetBuffer(0)` → clamp source box to texture dims → `CopySubresourceRegion` → `Present`
+- Extended `OnAcceleratedPaint`: after Spout block, batch-copies all D3D output slots → `Flush()` → `Present(0, ALLOW_TEARING)` (non-blocking, avoids DWM vsync stalls)
 - Source box clamping: queries `D3D11_TEXTURE2D_DESC` first frame, clamps x0/y0/x1/y1, logs first-frame diagnostics and out-of-bounds warnings
 - Exports: `startD3DOutput`, `addD3DOutputSlot`, `stopD3DOutput`, `hideWindow`
 
