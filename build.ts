@@ -185,6 +185,22 @@ async function bundleTs() {
     throw new Error("TypeScript bundle failed");
   }
   console.log(`✓ Bundle: ${join(DIST_DIR, "app.js")}`);
+
+  // Bundle debug-inject.js — auto-injects <debug-panel> into any page.
+  // This is a browser-target bundle (debug-panel.js + stats.js inlined)
+  // that the app evaluates via executeJavascript on dom-ready.
+  const injectResult = await Bun.build({
+    entrypoints: [join(ROOT, "src", "components", "inject.js")],
+    outdir: DIST_DIR,
+    target: "browser",
+    naming: "debug-inject.js",
+    minify: !isDev,
+  });
+  if (!injectResult.success) {
+    for (const msg of injectResult.logs) console.error(msg);
+    throw new Error("Debug inject bundle failed");
+  }
+  console.log(`✓ Debug inject: ${join(DIST_DIR, "debug-inject.js")}`);
 }
 
 function copyDir(src: string, dest: string, filter?: (name: string) => boolean) {

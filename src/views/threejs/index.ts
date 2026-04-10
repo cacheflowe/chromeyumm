@@ -1,7 +1,5 @@
 import * as THREE from "three";
 import { parseLayoutParams } from "../../components/layout-params.js";
-import "../../components/debug-panel.js";
-import "../../components/slot-overlay.js";
 import { ThreeSceneFBO } from "./ThreeSceneFBO.js";
 // Type-only interface for the <debug-panel> web component
 interface DebugPanelEl extends HTMLElement {

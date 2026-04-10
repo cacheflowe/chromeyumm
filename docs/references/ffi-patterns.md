@@ -41,9 +41,16 @@ native.symbols.setWindowTitle(ptr, cs("My Title"));
 
 For event routing, pass a `JSCallback`:
 ```typescript
-const callback = new JSCallback(
-  (rawPayload: Pointer) => { /* handle event */ },
-  { args: [FFIType.ptr], returns: FFIType.void }
+// 3-arg native event callback (C++ WebviewEventHandler: webviewId, eventType, eventData)
+const webviewEventCallback = new JSCallback(
+  (webviewId: number, type: number, detail: number) => { /* handle event */ },
+  { args: [FFIType.u32, FFIType.cstring, FFIType.cstring], returns: FFIType.void, threadsafe: true }
+);
+
+// 2-arg renderer process IPC callback (JSON messages from CEF renderer)
+const eventBridgeCallback = new JSCallback(
+  (id: number, msg: number) => { /* parse JSON payload */ },
+  { args: [FFIType.u32, FFIType.cstring], returns: FFIType.void, threadsafe: true }
 );
 ```
 
@@ -53,7 +60,7 @@ For unused bridge handlers, pass a no-op JSCallback (`nullCallback`).
 
 - **No RPC**: All calls are direct `native.symbols.*` — no request/response serialization
 - **No async FFI**: All calls are synchronous (acceptable for this use case)
-- **Event routing**: C++ → `eventBridgeCallback` JSCallback → per-webview listener map
+- **Event routing**: Two channels — `webviewEventCallback` for C++ native events (did-navigate, will-navigate), `eventBridgeCallback` for renderer process IPC (JSON messages)
 - **Guard on load failure**: `ffi.ts` catches `dlopen` errors and exits with a clear message
 
 ## Common Mistakes

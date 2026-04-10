@@ -5,22 +5,27 @@ As a developer building visuals for Chromeyumm, I want drop-in web components fo
 
 ## Components
 
-### `<debug-panel>` — Debug Panel
+### `<debug-panel>` — Consolidated Debug Panel
 **File:** `src/components/debug-panel.js`
 **Element:** `<debug-panel>`
 **Dependency:** `stats.js` (npm)
 
 Comprehensive debug overlay with:
-- **Keys section** — hotkey reference with live toggle states (alwaysOnTop, interactiveMode) read from `window.__ebState`
-- **Spout section** — live sender/receiver status, FPS counter, dimensions. Auto-shown when Spout URL params are present.
+- **Keys section** — data-driven hotkey reference read from `window.__chromeyumm.hotkeys`. Shows live ON/OFF badges for toggle-type shortcuts.
+- **Display section** — virtual canvas dimensions, slot count, content URL. Read from `window.__chromeyumm.display`.
+- **Output section** — output mode (spout/d3d/spout+d3d/headless), D3D window count, Spout sender name.
+- **Spout input section** — live receiver status, FPS counter, dimensions. Listens for `spout-connect`/`spout-frame`/`spout-disconnect` events.
 - **Perf section** — stats.js FPS/MS/MB graphs. Hidden until first `stats.begin()` call.
+- **Slot overlay** — coordinate grid + per-slot boundary boxes, rendered full-viewport. Formerly the separate `<slot-overlay>` component.
 - **View sections** — extensible via `panel.update({ render, canvas, mouse })`
 
-**Injected global:** `window.__ebPanelToggle()` — called by Ctrl+D shortcut.
+**Auto-injection:** Bundled into `dist/debug-inject.js` at build time. The app evaluates it via `executeJavascript` on did-navigate, so every page gets the panel without manual imports. Pages that already include `<debug-panel>` in their HTML are detected and skipped.
+
+**Injected global:** `window.__chromeyummToggle()` — called by Ctrl+D shortcut. Backward-compat alias: `window.__ebPanelToggle()`.
 
 **API:**
 ```javascript
-import "../../components/debug-panel.js";
+// Auto-injected — no import needed. Query the element:
 const panel = document.querySelector("debug-panel");
 
 panel.onOpen = () => refresh();     // called immediately on open
@@ -35,22 +40,6 @@ panel.stats.begin();
 renderer.render(scene, camera);
 panel.stats.end();
 ```
-
----
-
-### `<slot-overlay>` — Slot Boundary Debug Overlay
-**File:** `src/components/slot-overlay.js`
-**Element:** `<slot-overlay>`
-**Dependencies:** None
-
-Visual debug overlay showing:
-- Coordinate grid (100px intervals with labels)
-- Per-slot colored boundary boxes with dimensions and coordinates
-- Simulation mode indicator (`[sim]` label)
-
-**Injected global:** `window.__ebDebugToggle()` — called by Ctrl+D shortcut.
-
-**URL params consumed:** `totalWidth`, `totalHeight`, `slots` (JSON array)
 
 ---
 
@@ -138,11 +127,11 @@ const { totalWidth, totalHeight, slot, simulated } = parseLayoutParams();
 
 ```
 Chromeyumm app (src/app/index.ts)
-├─ Injects URL params: ?totalWidth=N&totalHeight=M&slots=[...]&spoutReceiverId=X
-├─ Registers Ctrl+D → window.__ebPanelToggle() + window.__ebDebugToggle()
+├─ Injects window.__chromeyumm state object (display, output, input, hotkeys)
+├─ Auto-injects <debug-panel> via dist/debug-inject.js on did-navigate
+├─ Registers Ctrl+D → window.__chromeyummToggle()
 └─ Loads view (e.g., threejs) with:
-   ├─ <debug-panel> — shows perf + spout status
-   ├─ <slot-overlay> — shows slot grid + boundaries
+   ├─ <debug-panel> — auto-injected; shows keys, display, output, perf, slot overlay
    └─ <spout-receiver render="false"> — polls frames for Three.js texture
 ```
 
@@ -150,9 +139,10 @@ Chromeyumm app (src/app/index.ts)
 
 | Global | Injected By | Purpose |
 |---|---|---|
-| `window.__ebPanelToggle()` | `<debug-panel>` connectedCallback | Toggle debug panel visibility |
-| `window.__ebDebugToggle()` | `<slot-overlay>` connectedCallback | Toggle slot overlay visibility |
-| `window.__ebState` | CEF on dom-ready + Ctrl+F/M | `{ alwaysOnTop, interactiveMode }` |
+| `window.__chromeyummToggle()` | `<debug-panel>` connectedCallback | Toggle debug panel + slot overlay |
+| `window.__ebPanelToggle()` | `<debug-panel>` connectedCallback | Backward-compat alias for above |
+| `window.__chromeyumm` | App on did-navigate + Ctrl+F/M | Full runtime state object (display, output, input, hotkeys, toggles) |
+| `window.__ebState` | Alias for `window.__chromeyumm` | Backward-compat alias |
 | `window.__spoutFrameBuffer` | CEF OnContextCreated | ArrayBuffer for zero-copy frame polling |
 | `window.__spoutGetFrame` | CEF OnContextCreated | Function(buf)→bool for sandbox mode |
 | `window.__spoutDiag` | C++ runtime (optional) | Diagnostic string shown in debug panel |

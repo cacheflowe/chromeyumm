@@ -1,5 +1,4 @@
 import { parseLayoutParams } from "../../components/layout-params.js";
-import "../../components/debug-panel.js";
 import "../../components/spout-receiver.js";
 
 const { totalWidth, totalHeight } = parseLayoutParams();

@@ -1,35 +1,35 @@
 /**
- * debug-panel.js — web component debug panel for Chromeyumm views.
+ * debug-panel.js — consolidated debug panel web component for Chromeyumm.
  *
- * Registers <debug-panel> as a custom element. Place directly in HTML:
- *
- *   <debug-panel></debug-panel>
- *
- * then import the module from your script to register the element:
- *
- *   import "../../components/debug-panel.js";
- *   const panel = document.querySelector("debug-panel");
+ * Registers <debug-panel> as a custom element. The browser auto-injects it
+ * into every page via dist/debug-inject.js (see inject.js). Developers can
+ * also place it directly in HTML — the auto-injector skips pages that already
+ * have one.
  *
  * ─── WHAT IT HANDLES INTERNALLY ──────────────────────────────────────────────
  *
- *   Keys section   — hardcoded command reference; reads window.__ebState for
- *                    live alwaysOnTop / interactiveMode toggle state.
- *                    bun seeds __ebState on dom-ready and patches it after
- *                    each Ctrl+F / Ctrl+M via executeJavascript.
+ *   Keys section     — data-driven from window.__chromeyumm.hotkeys. Shows
+ *                      live ON/OFF badges for toggle-type shortcuts.
  *
- *   Spout section  — reads ?spoutOutputName / ?spoutInputName URL params for
- *                    sender names; listens to bubbled spout-connect /
- *                    spout-frame / spout-disconnect events from any
- *                    <spout-receiver> on the page for live fps and dimension
- *                    stats. Shown automatically when either Spout name or
- *                    spoutReceiverId is present in the URL.
+ *   Display section  — virtual canvas dimensions, slot count, content URL.
+ *                      Read from window.__chromeyumm.display.
  *
- *   Perf section   — stats.js FPS / MS / MB graphs. Hidden until the first
- *                    stats.begin() call, so views without a render loop get
- *                    no spurious empty graphs.
+ *   Output section   — output mode (spout / d3d / spout+d3d / headless),
+ *                      D3D window count, Spout sender name.
  *
- *   window.__ebPanelToggle — registered for bun's GlobalShortcut Ctrl+D /
- *                    Ctrl+M via executeJavascript.
+ *   Spout section    — reads spout input from window.__chromeyumm.input.spout;
+ *                      listens to bubbled spout-connect / spout-frame /
+ *                      spout-disconnect events from any <spout-receiver> on
+ *                      the page for live fps and dimension stats.
+ *
+ *   Perf section     — stats.js FPS / MS / MB graphs. Hidden until the first
+ *                      stats.begin() call.
+ *
+ *   Slot overlay     — coordinate grid + per-slot boundary boxes, rendered
+ *                      full-viewport when the panel is open and slot data
+ *                      is available. Absorbed from the former <slot-overlay>.
+ *
+ *   window.__chromeyummToggle — registered for bun's GlobalShortcut Ctrl+D.
  *
  * ─── USAGE ────────────────────────────────────────────────────────────────────
  *
@@ -50,26 +50,24 @@
  *     stats.end();
  *   }
  *
- *   // Keys and Spout sections are populated automatically — do not pass them.
+ *   // Keys, display, output, and spout sections are populated automatically
+ *   // from window.__chromeyumm — do not pass them.
  *   // Use <br> in content strings to produce multiple bullet points.
  */
 
 import Stats from "stats.js";
 
+const SLOT_COLORS = ["#00ffff", "#ffff00", "#ff00ff", "#00ff88", "#ff8800"];
+const GRID_PX = 100;
+
 export class DebugPanel extends HTMLElement {
-  // ── URL params (read once at instantiation) ───────────────────────────────
-
-  #p = new URLSearchParams(location.search);
-  #spoutReceiverId = parseInt(this.#p.get("spoutReceiverId") ?? "0");
-  #spoutInputName = this.#p.get("spoutInputName") ?? "";
-  #spoutOutputName = this.#p.get("spoutOutputName") ?? "";
-
   // ── Instance state ────────────────────────────────────────────────────────
 
   #content = null; // text-sections div — innerHTML rebuilt on each redraw
-  #statsSection = null; // persistent stats.js container — never in innerHTML
+  #statsSection = null; // persistent stats.js container
   #stats = null; // wrapped stats object exposed via getter
-  #statsUsed = false; // true after first stats.begin() — shows perf section
+  #statsUsed = false; // true after first stats.begin()
+  #overlay = null; // full-viewport slot overlay container
   #onOpen = null;
   #intervalId = 0;
 
@@ -110,19 +108,23 @@ export class DebugPanel extends HTMLElement {
     style.textContent = `
       :host {
         position: fixed;
-        top: 10px; left: 10px;
+        top: 0; left: 0;
+        width: 0; height: 0;
         display: none;
         pointer-events: none;
         z-index: 9999;
       }
       :host([open]) { display: block; }
       .panel {
+        position: fixed;
+        top: 10px; left: 10px;
         background: rgba(0,0,0,0.85);
         color: rgba(255,255,255,0.82);
         font: 11px/1.7 monospace;
         padding: 10px 14px;
         border-radius: 4px;
         min-width: 300px;
+        z-index: 10000;
       }
       .s {
         border-top: 1px solid rgba(255,255,255,0.12);
@@ -144,9 +146,17 @@ export class DebugPanel extends HTMLElement {
       li { margin: 0; padding: 0; }
       li + li { margin-top: 1px; }
       b { font-weight: bold; }
+      .overlay {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2147483647;
+        overflow: hidden;
+        font-family: monospace;
+      }
     `;
 
-    // Outer panel box — wraps both text sections and the persistent stats row
+    // Info panel box
     const panelEl = document.createElement("div");
     panelEl.className = "panel";
 
@@ -173,8 +183,13 @@ export class DebugPanel extends HTMLElement {
     this.#statsSection.appendChild(rawStats.dom);
     panelEl.appendChild(this.#statsSection);
 
+    // Slot overlay container — full viewport, rebuilt on each redraw
+    this.#overlay = document.createElement("div");
+    this.#overlay.className = "overlay";
+
     shadow.appendChild(style);
     shadow.appendChild(panelEl);
+    shadow.appendChild(this.#overlay);
 
     // Wrap begin/end so that first call flips #statsUsed and shows the section
     this.#stats = {
@@ -190,8 +205,9 @@ export class DebugPanel extends HTMLElement {
     document.addEventListener("spout-frame", this.#onSpoutFrame);
     document.addEventListener("spout-disconnect", this.#onSpoutDisconnect);
 
-    // Registered by bun's GlobalShortcut Ctrl+D / Ctrl+M via executeJavascript
-    window.__ebPanelToggle = () => {
+    // Toggle function — registered for bun's Ctrl+D shortcut.
+    // Both names for backward compat with views that reference __ebPanelToggle.
+    window.__chromeyummToggle = window.__ebPanelToggle = () => {
       const opening = !this.hasAttribute("open");
       this.toggleAttribute("open");
       if (opening) {
@@ -237,8 +253,9 @@ export class DebugPanel extends HTMLElement {
   }
 
   /**
-   * Push view-specific section content. Keys and Spout sections are handled
-   * internally; do not pass them here. Use <br> to emit multiple bullets.
+   * Push view-specific section content. Keys, display, output, and spout
+   * sections are handled internally; do not pass them here.
+   * Use <br> to emit multiple bullets.
    *
    * @param {{
    *   render?: string | null,
@@ -275,56 +292,202 @@ export class DebugPanel extends HTMLElement {
     return `<div class="s"><div class="lbl">${label}</div>${DebugPanel.#list(content)}</div>`;
   }
 
-  // ── Keys section with live toggle states ─────────────────────────────────
+  // ── Keys section — data-driven from __chromeyumm.hotkeys ─────────────────
 
   #buildKeysHTML() {
-    const st = window.__ebState || {};
-    const aot = !!st.alwaysOnTop;
-    const im = !!st.interactiveMode;
-    const isSpoutMode = !!this.#spoutOutputName;
+    const state = window.__chromeyumm || {};
+    const hotkeys = state.hotkeys || [];
 
-    const items = [
-      `Ctrl+R — reload`,
-      `Ctrl+F — always-on-top: ${DebugPanel.#badge(aot)}`,
-      ...(!isSpoutMode ? [`Ctrl+M — interactive mode: ${DebugPanel.#badge(im)}`] : []),
-      `Ctrl+D — toggle this panel`,
-      `Esc — quit`,
-    ];
+    if (!hotkeys.length) {
+      // Fallback: hardcoded list (e.g. when state object is not yet injected)
+      return "<ul><li>Ctrl+D — toggle this panel</li></ul>";
+    }
+
+    const items = hotkeys.map((hk) => {
+      let line = `${hk.key} — ${hk.action}`;
+      if (hk.stateKey && state[hk.stateKey] !== undefined) {
+        line += `: ${DebugPanel.#badge(!!state[hk.stateKey])}`;
+      }
+      return line;
+    });
 
     return "<ul>" + items.map((i) => `<li>${i}</li>`).join("") + "</ul>";
   }
 
-  // ── Spout section ─────────────────────────────────────────────────────────
+  // ── Display section ───────────────────────────────────────────────────────
 
-  #buildSpoutHTML() {
-    const hasOutput = !!this.#spoutOutputName;
-    const hasInput = !!(this.#spoutReceiverId || this.#spoutInputName);
-    if (!hasOutput && !hasInput) return null;
+  #buildDisplayHTML() {
+    const d = (window.__chromeyumm || {}).display;
+    if (!d) return null;
 
-    const items = [];
+    const items = [
+      `${d.totalWidth}×${d.totalHeight} virtual canvas`,
+      `${d.slots?.length ?? 0} slot${(d.slots?.length ?? 0) !== 1 ? "s" : ""}` + (d.fullscreen ? " · fullscreen" : ""),
+    ];
 
-    if (hasOutput) {
-      items.push(`output sender: <b>${this.#spoutOutputName}</b>`);
-    }
-
-    if (hasInput) {
-      const name = this.#spoutInputName || "(unknown)";
-      const id = this.#spoutReceiverId ? ` · receiver ${this.#spoutReceiverId}` : "";
-      items.push(`input sender: <b>${name}</b>${id}`);
-
-      if (this.#spoutFrameCount === 0) {
-        items.push(`waiting for frames…`);
-      } else if (!this.#spoutConnected) {
-        items.push(`<span style="color:#f77">disconnected</span> · ${this.#spoutW}×${this.#spoutH}`);
-      } else {
-        items.push(`${this.#spoutW}×${this.#spoutH} · ${this.#spoutFPS} fps`);
-      }
-
-      const diag = window.__spoutDiag;
-      if (diag) items.push(`<span style="opacity:0.55">${diag}</span>`);
+    // Truncate content URL for display
+    if (d.contentUrl) {
+      const url = d.contentUrl.length > 50 ? d.contentUrl.slice(0, 47) + "..." : d.contentUrl;
+      items.push(`<span style="opacity:0.55">${url}</span>`);
     }
 
     return "<ul>" + items.map((i) => `<li>${i}</li>`).join("") + "</ul>";
+  }
+
+  // ── Output section ────────────────────────────────────────────────────────
+
+  #buildOutputHTML() {
+    const o = (window.__chromeyumm || {}).output;
+    if (!o) return null;
+
+    const items = [`mode: <b>${o.mode}</b>`];
+
+    if (o.d3d?.active) {
+      items.push(`D3D: ${o.d3d.windowCount} window${o.d3d.windowCount !== 1 ? "s" : ""}`);
+    }
+    if (o.spout?.active && o.spout.senderName) {
+      items.push(`Spout sender: <b>${o.spout.senderName}</b>`);
+    }
+
+    return "<ul>" + items.map((i) => `<li>${i}</li>`).join("") + "</ul>";
+  }
+
+  // ── Spout input section ───────────────────────────────────────────────────
+
+  #buildSpoutInputHTML() {
+    const inp = (window.__chromeyumm || {}).input?.spout;
+    const hasInput = inp?.active || this.#spoutFrameCount > 0;
+    if (!hasInput) return null;
+
+    const items = [];
+    const name = inp?.senderName || "(unknown)";
+    const id = inp?.receiverId ? ` · receiver ${inp.receiverId}` : "";
+    items.push(`input sender: <b>${name}</b>${id}`);
+
+    if (this.#spoutFrameCount === 0) {
+      items.push(`waiting for frames…`);
+    } else if (!this.#spoutConnected) {
+      items.push(`<span style="color:#f77">disconnected</span> · ${this.#spoutW}×${this.#spoutH}`);
+    } else {
+      items.push(`${this.#spoutW}×${this.#spoutH} · ${this.#spoutFPS} fps`);
+    }
+
+    const diag = window.__spoutDiag;
+    if (diag) items.push(`<span style="opacity:0.55">${diag}</span>`);
+
+    return "<ul>" + items.map((i) => `<li>${i}</li>`).join("") + "</ul>";
+  }
+
+  // ── Slot overlay rendering ────────────────────────────────────────────────
+
+  #buildOverlay() {
+    this.#overlay.innerHTML = "";
+    const state = window.__chromeyumm || {};
+    const d = state.display;
+    if (!d || !d.slots || !d.slots.length) return;
+
+    const totalWidth = d.totalWidth;
+    const totalHeight = d.totalHeight;
+    const vpW = window.innerWidth;
+    const vpH = window.innerHeight;
+    const sx = vpW / totalWidth;
+    const sy = vpH / totalHeight;
+
+    const cx = (lx) => (lx * sx).toFixed(2) + "px";
+    const cy = (ly) => (ly * sy).toFixed(2) + "px";
+
+    // Coordinate grid
+    const grid = document.createElement("div");
+    grid.style.cssText = [
+      "position:absolute",
+      "inset:0",
+      "background-image:" +
+        "linear-gradient(to right,  rgba(255,255,255,0.10) 1px, transparent 1px)," +
+        "linear-gradient(to bottom, rgba(255,255,255,0.10) 1px, transparent 1px)",
+      "background-size:" + (GRID_PX * sx).toFixed(2) + "px " + (GRID_PX * sy).toFixed(2) + "px",
+    ].join(";");
+    this.#overlay.appendChild(grid);
+
+    // X-axis coordinate labels
+    for (let x = 0; x < totalWidth; x += GRID_PX) {
+      const lbl = document.createElement("span");
+      lbl.textContent = x;
+      lbl.style.cssText = [
+        "position:absolute",
+        "left:" + cx(x + 3),
+        "top:2px",
+        "color:rgba(255,255,255,0.45)",
+        "font-size:9px",
+        "line-height:1",
+        "white-space:nowrap",
+      ].join(";");
+      this.#overlay.appendChild(lbl);
+    }
+
+    // Y-axis coordinate labels
+    for (let y = GRID_PX; y < totalHeight; y += GRID_PX) {
+      const lbl = document.createElement("span");
+      lbl.textContent = y;
+      lbl.style.cssText = [
+        "position:absolute",
+        "left:2px",
+        "top:" + cy(y - 11),
+        "color:rgba(255,255,255,0.45)",
+        "font-size:9px",
+        "line-height:1",
+        "white-space:nowrap",
+      ].join(";");
+      this.#overlay.appendChild(lbl);
+    }
+
+    // Per-slot boundary boxes + labels
+    d.slots.forEach((slot, i) => {
+      const color = SLOT_COLORS[i % SLOT_COLORS.length];
+
+      const box = document.createElement("div");
+      box.style.cssText = [
+        "position:absolute",
+        "left:" + cx(slot.x),
+        "top:" + cy(slot.y),
+        "width:" + cx(slot.w),
+        "height:" + cy(slot.h),
+        "outline:2px dashed " + color,
+        "outline-offset:-2px",
+        "box-sizing:border-box",
+      ].join(";");
+      this.#overlay.appendChild(box);
+
+      const info = document.createElement("div");
+      info.innerHTML =
+        "<b>SLOT " +
+        slot.slot +
+        "</b>" +
+        (slot.sim ? ' <span style="color:#f80">[sim]</span>' : "") +
+        "<br>" +
+        slot.w +
+        "\u00d7" +
+        slot.h +
+        " @ (" +
+        slot.x +
+        "," +
+        slot.y +
+        ")";
+      info.style.cssText = [
+        "position:absolute",
+        "left:" + cx(slot.x + slot.w / 2),
+        "top:" + cy(slot.y + 12),
+        "transform:translateX(-50%)",
+        "background:rgba(0,0,0,0.6)",
+        "color:" + color,
+        "font-size:12px",
+        "line-height:1.5",
+        "padding:4px 8px",
+        "border-radius:3px",
+        "border:1px solid " + color,
+        "text-align:center",
+      ].join(";");
+      this.#overlay.appendChild(info);
+    });
   }
 
   // ── Full panel render ─────────────────────────────────────────────────────
@@ -333,21 +496,28 @@ export class DebugPanel extends HTMLElement {
     if (!this.#content || !this.hasAttribute("open")) return;
 
     const s = this.#viewSections;
-    const spout = this.#buildSpoutHTML();
+    const display = this.#buildDisplayHTML();
+    const output = this.#buildOutputHTML();
+    const spoutInput = this.#buildSpoutInputHTML();
 
     let html =
       `<div class="s"><b>debug</b> <span style="opacity:0.4;font-weight:normal">— Ctrl+D to hide</span></div>` +
       `<div class="s"><div class="lbl">keys</div>${this.#buildKeysHTML()}</div>`;
 
+    if (display != null) html += `<div class="s"><div class="lbl">display</div>${display}</div>`;
+    if (output != null) html += `<div class="s"><div class="lbl">output</div>${output}</div>`;
     if (s.render != null) html += DebugPanel.#section("render", s.render);
     if (s.canvas != null) html += DebugPanel.#section("canvas", s.canvas);
     if (s.mouse != null) html += DebugPanel.#section("mouse", s.mouse);
-    if (spout != null) html += `<div class="s"><div class="lbl">spout</div>${spout}</div>`;
+    if (spoutInput != null) html += `<div class="s"><div class="lbl">spout input</div>${spoutInput}</div>`;
 
     this.#content.innerHTML = html;
 
     // Show perf graphs only after the view has started calling begin()/end()
     this.#statsSection.style.display = this.#statsUsed ? "" : "none";
+
+    // Rebuild slot overlay
+    this.#buildOverlay();
   }
 }
 

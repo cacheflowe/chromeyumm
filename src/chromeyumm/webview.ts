@@ -1,10 +1,18 @@
 /**
  * Webview — wraps a single CEF browser instance.
- * Handles JS evaluation and C++ event routing (dom-ready, navigation, etc.).
+ * Handles JS evaluation and C++ event routing (did-navigate, will-navigate, etc.).
  */
 
 import { type Pointer } from "bun:ffi";
-import { native, cs, addWebviewListener, eventBridgeCallback, nullCallback, decideNavCallback } from "./ffi.ts";
+import {
+  native,
+  cs,
+  addWebviewListener,
+  webviewEventCallback,
+  eventBridgeCallback,
+  nullCallback,
+  decideNavCallback,
+} from "./ffi.ts";
 
 let nextId = 1;
 export const webviewRegistry = new Map<number, Webview>();
@@ -38,7 +46,7 @@ export class Webview {
       true, // autoResize
       cs("persist:default"),
       decideNavCallback,
-      eventBridgeCallback, // webviewEventHandler slot (reuse eventBridge)
+      webviewEventCallback, // webviewEventHandler (did-navigate, will-navigate, etc.)
       eventBridgeCallback, // eventBridgeHandler
       nullCallback, // bunBridgePostmessageHandler (no RPC)
       nullCallback, // internalBridgeHandler (no RPC)

@@ -98,13 +98,19 @@ All FFI symbols are declared in `src/chromeyumm/ffi.ts`. The full export list:
 
 ## Event Routing (C++ → TypeScript)
 
+Two callback channels deliver events from C++ to the TS layer:
+
 ```
-C++ eventBridgeCallback (JSCallback)
-  └── payload: { id: "webviewEvent", payload: { id, eventName, detail } }
-  └── dispatches to webviewListeners.get(webviewId)?.get(eventName)
+1. webviewEventCallback (3-arg: webviewId, eventType, eventData)
+   └── C++ WebviewEventHandler fires: did-navigate, will-navigate, new-window-open
+   └── dispatches to webviewListeners.get(webviewId)?.get(eventName)
+
+2. eventBridgeCallback (2-arg: webviewId, JSON message)
+   └── CEF renderer → browser process IPC (EventBridgeMessage)
+   └── payload: { id: "webviewEvent", payload: { id, eventName, detail } }
 ```
 
-Main event: `dom-ready` (used by master webview to inject scripts after page load).
+Main event: `did-navigate` (used by master webview to inject scripts after page load).
 
 ## Threading Model
 

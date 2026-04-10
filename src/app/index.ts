@@ -1,5 +1,6 @@
 import { BrowserWindow, NativeDisplayWindow, Screen, GlobalShortcut } from "chromeyumm";
 import { dirname, join, basename } from "path";
+import { readFileSync } from "fs";
 import { loadDisplayConfig, resolveVirtualCanvas } from "./config.ts";
 import { SpoutInput } from "./spout-input.ts";
 import { native, cs } from "../chromeyumm/ffi.ts";
@@ -39,8 +40,27 @@ native.symbols.initEventLoop(cs("chromeyumm"), cs("Chromeyumm"), cs("stable"));
 // ---------------------------------------------------------------------------
 const HIDE_CURSOR_SCRIPT = `document.documentElement.style.setProperty('cursor','none','important')`;
 const SHOW_CURSOR_SCRIPT = `document.documentElement.style.removeProperty('cursor')`;
-const TOGGLE_PANEL_SCRIPT = `(function(){if(typeof window.__ebPanelToggle==='function')window.__ebPanelToggle();})()`;
-const TOGGLE_OVERLAY_SCRIPT = `(function(){if(typeof window.__ebDebugToggle==='function')window.__ebDebugToggle();})()`;
+const TOGGLE_PANEL_SCRIPT = `(function(){if(typeof window.__chromeyummToggle==='function')window.__chromeyummToggle();})()`;
+
+// Auto-inject script — bundled from src/components/inject.js at build time.
+// Injects <debug-panel> into any page that doesn't already have one.
+let debugInjectScript = "";
+{
+  // Try exe directory first (production), then dist/ relative to cwd (dev mode)
+  const candidates = [
+    join(dirname(process.execPath), "debug-inject.js"),
+    join(process.cwd(), "dist", "debug-inject.js"),
+  ];
+  for (const path of candidates) {
+    try {
+      debugInjectScript = readFileSync(path, "utf-8");
+      break;
+    } catch {}
+  }
+  if (!debugInjectScript) {
+    console.warn("[chromeyumm] debug-inject.js not found — debug panel auto-injection disabled");
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Config / layout
@@ -300,14 +320,70 @@ createDisplayWindows();
 const SEP = "[chromeyumm] " + "─".repeat(52);
 console.log(SEP);
 console.log("[chromeyumm]  ACTIVE OUTPUTS");
-if (modeSpout)
-  console.log(`[chromeyumm]    Spout        → "${config!.spoutOutput!.senderName}"`);
+if (modeSpout) console.log(`[chromeyumm]    Spout        → "${config!.spoutOutput!.senderName}"`);
 if (modeMultiWindow)
-  console.log(`[chromeyumm]    Multi-window → ${displayWindows.length} D3D display window${displayWindows.length !== 1 ? "s" : ""}`);
-if (!modeSpout && !modeMultiWindow)
-  console.log("[chromeyumm]    (none — headless)");
+  console.log(
+    `[chromeyumm]    Multi-window → ${displayWindows.length} D3D display window${displayWindows.length !== 1 ? "s" : ""}`,
+  );
+if (!modeSpout && !modeMultiWindow) console.log("[chromeyumm]    (none — headless)");
 console.log(`[chromeyumm]  Content URL  → ${contentUrl}`);
 console.log(SEP);
+
+// ---------------------------------------------------------------------------
+// Build the __chromeyumm state object — the API contract between native/app
+// and web content. The debug panel reads this on a 1-second poll.
+// ---------------------------------------------------------------------------
+
+const outputMode =
+  modeSpout && modeMultiWindow ? "spout+d3d" : modeSpout ? "spout" : modeMultiWindow ? "d3d" : "headless";
+
+function buildChromeyummState() {
+  const hotkeys: { key: string; action: string; stateKey?: string }[] = [
+    { key: "Ctrl+R", action: "reload" },
+    { key: "Ctrl+F", action: "always-on-top", stateKey: "alwaysOnTop" },
+  ];
+  if (!config?.spoutOutput) {
+    hotkeys.push({ key: "Ctrl+M", action: "interactive mode", stateKey: "interactiveMode" });
+    hotkeys.push({ key: "Ctrl+Shift+M", action: "reset windows" });
+  }
+  hotkeys.push({ key: "Ctrl+D", action: "toggle debug panel" });
+  hotkeys.push({ key: "Escape", action: "quit" });
+
+  return {
+    alwaysOnTop,
+    interactiveMode,
+    display: {
+      totalWidth,
+      totalHeight,
+      contentUrl: contentUrl!,
+      fullscreen,
+      slots: slots.map((s) => ({
+        slot: s.slot,
+        x: s.sourceX,
+        y: s.sourceY,
+        w: s.sourceWidth,
+        h: s.sourceHeight,
+        sim: s.simulated,
+      })),
+    },
+    output: {
+      mode: outputMode,
+      d3d: { active: useD3DOutput, windowCount: displayWindows.length },
+      spout: {
+        active: !!config?.spoutOutput,
+        senderName: config?.spoutOutput?.senderName ?? null,
+      },
+    },
+    input: {
+      spout: {
+        active: !!spoutInput,
+        senderName: config?.spoutInput?.senderName ?? null,
+        receiverId: spoutInput?.id ?? 0,
+      },
+    },
+    hotkeys,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Interactive mode
@@ -323,9 +399,14 @@ if (useD3DOutput) {
   }
 }
 
-master.webview.on("dom-ready", () => {
+master.webview.on("did-navigate", () => {
   if (!interactiveMode) master.webview.executeJavascript(HIDE_CURSOR_SCRIPT);
-  master.webview.executeJavascript(`window.__ebState=${JSON.stringify({ alwaysOnTop, interactiveMode })}`);
+  // Inject state object (must come before debug panel injection)
+  master.webview.executeJavascript(
+    `window.__chromeyumm=${JSON.stringify(buildChromeyummState())};window.__ebState=window.__chromeyumm`,
+  );
+  // Auto-inject <debug-panel> if not already present in the page
+  if (debugInjectScript) master.webview.executeJavascript(debugInjectScript);
 });
 
 if (!config?.spoutOutput) {
@@ -342,7 +423,7 @@ if (!config?.spoutOutput) {
       master.webview.executeJavascript(HIDE_CURSOR_SCRIPT);
       console.log("[chromeyumm] Ctrl+M: interactive mode OFF");
     }
-    master.webview.executeJavascript(`(window.__ebState=window.__ebState||{}).interactiveMode=${interactiveMode}`);
+    master.webview.executeJavascript(`if(window.__chromeyumm)window.__chromeyumm.interactiveMode=${interactiveMode}`);
   });
 
   GlobalShortcut.register("CommandOrControl+Shift+M", () => {
@@ -363,14 +444,13 @@ GlobalShortcut.register("CommandOrControl+F", () => {
   } else {
     displayWindows.forEach((w) => w.setAlwaysOnTop(alwaysOnTop));
   }
-  master.webview.executeJavascript(`(window.__ebState=window.__ebState||{}).alwaysOnTop=${alwaysOnTop}`);
+  master.webview.executeJavascript(`if(window.__chromeyumm)window.__chromeyumm.alwaysOnTop=${alwaysOnTop}`);
   console.log(`[chromeyumm] Ctrl+F: alwaysOnTop → ${alwaysOnTop}`);
 });
 
 GlobalShortcut.register("CommandOrControl+D", () => {
   console.log("[chromeyumm] Ctrl+D: toggling debug panel");
   master.webview.executeJavascript(TOGGLE_PANEL_SCRIPT);
-  master.webview.executeJavascript(TOGGLE_OVERLAY_SCRIPT);
 });
 
 GlobalShortcut.register("Escape", () => {
@@ -381,6 +461,6 @@ GlobalShortcut.register("Escape", () => {
   process.exit(0);
 });
 
-// Keep Bun's event loop alive so CEF callbacks (dom-ready, shortcuts, etc.) can fire.
+// Keep Bun's event loop alive so CEF callbacks (did-navigate, shortcuts, etc.) can fire.
 // Without this, Bun exits as soon as top-level JS finishes.
 setInterval(() => {}, 1 << 30);

@@ -22,20 +22,31 @@ export const native = (() => {
       // ── Window ──────────────────────────────────────────────────────────
       getWindowStyle: {
         args: [
-          FFIType.bool, FFIType.bool, FFIType.bool, FFIType.bool, FFIType.bool,
-          FFIType.bool, FFIType.bool, FFIType.bool, FFIType.bool, FFIType.bool,
-          FFIType.bool, FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
+          FFIType.bool,
         ],
         returns: FFIType.u32,
       },
       createWindowWithFrameAndStyleFromWorker: {
         args: [
-          FFIType.u32,      // windowId
-          FFIType.f64, FFIType.f64,  // x, y
-          FFIType.f64, FFIType.f64,  // width, height
-          FFIType.u32,      // styleMask
-          FFIType.cstring,  // titleBarStyle
-          FFIType.bool,     // transparent
+          FFIType.u32, // windowId
+          FFIType.f64,
+          FFIType.f64, // x, y
+          FFIType.f64,
+          FFIType.f64, // width, height
+          FFIType.u32, // styleMask
+          FFIType.cstring, // titleBarStyle
+          FFIType.bool, // transparent
           FFIType.function, // closeHandler
           FFIType.function, // moveHandler
           FFIType.function, // resizeHandler
@@ -45,34 +56,36 @@ export const native = (() => {
         ],
         returns: FFIType.ptr,
       },
-      setWindowTitle:    { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.void },
-      showWindow:        { args: [FFIType.ptr], returns: FFIType.void },
-      hideWindow:        { args: [FFIType.ptr], returns: FFIType.void },
-      closeWindow:       { args: [FFIType.ptr], returns: FFIType.void },
+      setWindowTitle: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.void },
+      showWindow: { args: [FFIType.ptr], returns: FFIType.void },
+      hideWindow: { args: [FFIType.ptr], returns: FFIType.void },
+      closeWindow: { args: [FFIType.ptr], returns: FFIType.void },
       setWindowAlwaysOnTop: { args: [FFIType.ptr, FFIType.bool], returns: FFIType.void },
-      setWindowFullScreen:  { args: [FFIType.ptr, FFIType.bool], returns: FFIType.void },
+      setWindowFullScreen: { args: [FFIType.ptr, FFIType.bool], returns: FFIType.void },
 
       // ── Webview ─────────────────────────────────────────────────────────
       initWebview: {
         args: [
-          FFIType.u32,      // webviewId
-          FFIType.ptr,      // windowPtr
-          FFIType.cstring,  // renderer ("cef")
-          FFIType.cstring,  // url
-          FFIType.f64, FFIType.f64,  // x, y
-          FFIType.f64, FFIType.f64,  // width, height
-          FFIType.bool,     // autoResize
-          FFIType.cstring,  // partition
+          FFIType.u32, // webviewId
+          FFIType.ptr, // windowPtr
+          FFIType.cstring, // renderer ("cef")
+          FFIType.cstring, // url
+          FFIType.f64,
+          FFIType.f64, // x, y
+          FFIType.f64,
+          FFIType.f64, // width, height
+          FFIType.bool, // autoResize
+          FFIType.cstring, // partition
           FFIType.function, // decideNavigation
-          FFIType.function, // webviewEventHandler (unused — pass eventBridgeHandler)
-          FFIType.function, // eventBridgeHandler (dom-ready, navigation, etc.)
+          FFIType.function, // webviewEventHandler (did-navigate, will-navigate, etc.)
+          FFIType.function, // eventBridgeHandler (renderer process IPC, JSON-formatted)
           FFIType.function, // bunBridgePostmessageHandler (null — no RPC)
           FFIType.function, // internalBridgeHandler (null — no RPC)
-          FFIType.cstring,  // electrobunPreloadScript
-          FFIType.cstring,  // customPreloadScript
-          FFIType.cstring,  // viewsRoot
-          FFIType.bool,     // transparent
-          FFIType.bool,     // sandbox
+          FFIType.cstring, // electrobunPreloadScript
+          FFIType.cstring, // customPreloadScript
+          FFIType.cstring, // viewsRoot
+          FFIType.bool, // transparent
+          FFIType.bool, // sandbox
         ],
         returns: FFIType.ptr,
       },
@@ -90,7 +103,7 @@ export const native = (() => {
       },
 
       // ── D3D output ──────────────────────────────────────────────────────
-      startD3DOutput:  { args: [FFIType.u32], returns: FFIType.bool },
+      startD3DOutput: { args: [FFIType.u32], returns: FFIType.bool },
       addD3DOutputSlot: {
         args: [FFIType.u32, FFIType.u32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32],
         returns: FFIType.bool,
@@ -99,28 +112,28 @@ export const native = (() => {
 
       // ── Spout sender ────────────────────────────────────────────────────
       startSpoutSender: { args: [FFIType.u32, FFIType.cstring], returns: FFIType.bool },
-      stopSpoutSender:  { args: [FFIType.u32], returns: FFIType.void },
+      stopSpoutSender: { args: [FFIType.u32], returns: FFIType.void },
 
       // ── Spout receiver ──────────────────────────────────────────────────
-      startSpoutReceiver:       { args: [FFIType.cstring], returns: FFIType.u32 },
-      stopSpoutReceiver:        { args: [FFIType.u32], returns: FFIType.void },
+      startSpoutReceiver: { args: [FFIType.cstring], returns: FFIType.u32 },
+      stopSpoutReceiver: { args: [FFIType.u32], returns: FFIType.void },
       getSpoutReceiverMappingName: { args: [FFIType.u32], returns: FFIType.cstring },
-      getSpoutReceiverSeq:      { args: [FFIType.u32], returns: FFIType.i32 },
+      getSpoutReceiverSeq: { args: [FFIType.u32], returns: FFIType.i32 },
 
       // ── NativeDisplayWindow ─────────────────────────────────────────────
       createNativeDisplayWindow: {
         args: [FFIType.u32, FFIType.i32, FFIType.i32, FFIType.i32, FFIType.i32],
         returns: FFIType.ptr,
       },
-      destroyNativeDisplayWindow:          { args: [FFIType.u32], returns: FFIType.void },
-      setNativeDisplayWindowVisible:       { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
-      setNativeDisplayWindowAlwaysOnTop:   { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
-      setNativeDisplayWindowFullScreen:    { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
+      destroyNativeDisplayWindow: { args: [FFIType.u32], returns: FFIType.void },
+      setNativeDisplayWindowVisible: { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
+      setNativeDisplayWindowAlwaysOnTop: { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
+      setNativeDisplayWindowFullScreen: { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
 
       // ── Global shortcuts ─────────────────────────────────────────────────
       setGlobalShortcutCallback: { args: [FFIType.function], returns: FFIType.void },
-      registerGlobalShortcut:    { args: [FFIType.cstring], returns: FFIType.bool },
-      unregisterGlobalShortcut:  { args: [FFIType.cstring], returns: FFIType.bool },
+      registerGlobalShortcut: { args: [FFIType.cstring], returns: FFIType.bool },
+      unregisterGlobalShortcut: { args: [FFIType.cstring], returns: FFIType.bool },
       unregisterAllGlobalShortcuts: { args: [], returns: FFIType.void },
 
       // ── Event loop ──────────────────────────────────────────────────────
@@ -164,7 +177,21 @@ function dispatchWebviewEvent(webviewId: number, eventName: string, detail: stri
   if (handlers) for (const h of handlers) h(detail);
 }
 
-/** CEF → TS event bridge (dom-ready, navigation, etc.) */
+/** C++ WebviewEventHandler → TS (did-navigate, will-navigate, etc.) */
+export const webviewEventCallback = new JSCallback(
+  (webviewId: number, type: number, detail: number) => {
+    try {
+      const eventName = new CString(type as unknown as Pointer).toString();
+      const eventDetail = new CString(detail as unknown as Pointer).toString();
+      dispatchWebviewEvent(webviewId, eventName, eventDetail);
+    } catch (e) {
+      console.error("[chromeyumm] webviewEventCallback error:", e);
+    }
+  },
+  { args: [FFIType.u32, FFIType.cstring, FFIType.cstring], returns: FFIType.void, threadsafe: true },
+);
+
+/** CEF → TS event bridge (renderer process messages, JSON-formatted) */
 export const eventBridgeCallback = new JSCallback(
   (_id: number, msg: number) => {
     try {
@@ -183,23 +210,27 @@ export const eventBridgeCallback = new JSCallback(
 );
 
 /** Null-stub callback for unused bridges (bunBridge, internalBridge). */
-export const nullCallback = new JSCallback(
-  (_id: number, _msg: number) => {},
-  { args: [FFIType.u32, FFIType.cstring], returns: FFIType.void, threadsafe: true },
-);
+export const nullCallback = new JSCallback((_id: number, _msg: number) => {}, {
+  args: [FFIType.u32, FFIType.cstring],
+  returns: FFIType.void,
+  threadsafe: true,
+});
 
 /** Navigation decision — always allow. Override if you need URL filtering. */
-export const decideNavCallback = new JSCallback(
-  (_id: number, _url: number) => true,
-  { args: [FFIType.u32, FFIType.cstring], returns: FFIType.bool, threadsafe: true },
-);
+export const decideNavCallback = new JSCallback((_id: number, _url: number) => true, {
+  args: [FFIType.u32, FFIType.cstring],
+  returns: FFIType.bool,
+  threadsafe: true,
+});
 
 // Unused window event stubs (required by createWindowWithFrameAndStyleFromWorker signature)
-export const windowNoopCallback = new JSCallback(
-  (_id: number) => {},
-  { args: [FFIType.u32], returns: FFIType.void, threadsafe: true },
-);
-export const windowKeyCallback = new JSCallback(
-  (_id: number, _key: number) => {},
-  { args: [FFIType.u32, FFIType.cstring], returns: FFIType.void, threadsafe: true },
-);
+export const windowNoopCallback = new JSCallback((_id: number) => {}, {
+  args: [FFIType.u32],
+  returns: FFIType.void,
+  threadsafe: true,
+});
+export const windowKeyCallback = new JSCallback((_id: number, _key: number) => {}, {
+  args: [FFIType.u32, FFIType.cstring],
+  returns: FFIType.void,
+  threadsafe: true,
+});

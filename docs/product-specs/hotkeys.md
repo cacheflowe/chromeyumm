@@ -16,23 +16,22 @@ To avoid hijacking key combos from other applications, hotkeys are **suspended w
 | **Ctrl+Shift+M** | Reset display windows | Destroys and recreates all NDWs + D3D output + reloads content | D3D output mode only |
 | **Ctrl+R** | Reload content | `executeJavascript("location.reload()")` | Always |
 | **Ctrl+F** | Toggle alwaysOnTop | Applies to display windows (D3D) or master (Spout) | Always |
-| **Ctrl+D** | Toggle debug panel + overlay | Calls `window.__ebPanelToggle()` and `window.__ebDebugToggle()` | Only works if page implements these functions |
+| **Ctrl+D** | Toggle debug panel + overlay | Calls `window.__chromeyummToggle()` | Auto-injected; works on any page |
 | **Escape** | Quit cleanly | Stops Spout, destroys display windows, `process.exit(0)` | Always |
 
 ## Interactive vs Output Mode (Ctrl+M)
 
 - **Output mode** (default): Display windows visible, master hidden, cursor hidden
 - **Interactive mode**: Display windows hidden, master visible, cursor visible
-- State injected to page: `window.__ebState = { alwaysOnTop, interactiveMode }`
+- State injected to page: `window.__chromeyumm = { alwaysOnTop, interactiveMode, display, output, input, hotkeys }`
 
 ## Edge Cases
-- Ctrl+D is a silent no-op if the page doesn't register `window.__ebPanelToggle` (e.g., external HTTPS pages)
+- Ctrl+D works on any page via auto-injection (`dist/debug-inject.js` evaluated on did-navigate)
 - Ctrl+M and Ctrl+Shift+M are not registered when Spout output is active (master window stays visible for Spout; display windows are managed by D3D output)
 - `loadURL()` is broken — Ctrl+R uses `location.reload()` instead
 
 ## Out of Scope
 - Custom/configurable hotkeys
-- Hotkey display in UI
 - Hotkeys that depend on focus state
 
 ## Related

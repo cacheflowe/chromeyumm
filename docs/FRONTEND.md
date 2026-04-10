@@ -69,21 +69,21 @@ Reusable custom elements in `src/components/` — drop into any page loaded in C
 
 | Component | Element | Purpose |
 |---|---|---|
-| `debug-panel.js` | `<debug-panel>` | Debug overlay: hotkey reference, Spout status, stats.js perf graphs, extensible view sections |
-| `slot-overlay.js` | `<slot-overlay>` | Coordinate grid + per-slot boundary boxes over the virtual canvas |
+| `debug-panel.js` | `<debug-panel>` | Consolidated debug overlay: hotkey reference, display/output status, Spout input, stats.js perf graphs, slot boundary overlay, extensible view sections |
 | `spout-receiver.js` | `<spout-receiver>` | Spout input with WebGL BGRA→RGBA rendering + disconnect detection |
 | `spout-video.js` | `<spout-video>` | Extends spout-receiver — wraps frames in a native `<video>` via captureStream |
 | `layout-params.js` | (utility) | Parses standard Chromeyumm URL parameters |
+| `inject.js` | (auto-injector) | Bundled into `dist/debug-inject.js`; auto-injects `<debug-panel>` on did-navigate |
 
 All components are framework-agnostic, use Shadow DOM, and require zero build tools. See [product-specs/web-components.md](product-specs/web-components.md) for full API docs.
 
 ## Injected Scripts
 
 The app injects scripts via `executeJavascript()`:
+- **State object**: `window.__chromeyumm = { alwaysOnTop, interactiveMode, display, output, input, hotkeys }` — full runtime state, polled by debug panel
+- **Debug panel auto-injection**: `dist/debug-inject.js` — injects `<debug-panel>` into any page (skips if already present)
+- **Debug panel toggle**: `window.__chromeyummToggle()` (Ctrl+D)
 - **Hide/show cursor**: `document.documentElement.style.setProperty('cursor','none','important')` in output mode
-- **Debug panel toggle**: `window.__ebPanelToggle()` (Ctrl+D)
-- **Debug overlay toggle**: `window.__ebDebugToggle()` (Ctrl+D)
-- **State injection**: `window.__ebState = { alwaysOnTop, interactiveMode }`
 
 ## Hotkeys
 
@@ -99,7 +99,6 @@ The app injects scripts via `executeJavascript()`:
 ## Known Limitations
 
 - `loadURL()` ignores its url argument — use `location.reload()` for content reload
-- Ctrl+D only works when the page includes `debug-panel.js` and registers `window.__ebPanelToggle`
 - "Black window" in OSR: master HWND is always black — content only exists in the `OnAcceleratedPaint` shared texture. Verify pipeline via staging-texture pixel readback: alpha=0 → unrendered, alpha=FF + black RGB → page content is black.
 
 ## Related
