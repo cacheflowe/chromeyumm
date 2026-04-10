@@ -7,9 +7,10 @@ All commands run from the project root unless noted.
 | Command | Description |
 |---|---|
 | `bun install` | Install dependencies (first time only) |
-| `bun build.ts` | Full rebuild: compile C++ DLL + bundle TS + compile `chromeyumm.exe` + copy CEF runtime to `dist/` |
-| `bun build.ts --skip-native` | TS bundle + exe compile only (no MSVC). Fast for TS-only changes. |
-| `bun build.ts --dev` | Full build with no minification and inline sourcemaps |
+| `bun run build` | Full rebuild: compile C++ DLL + bundle TS + compile `chromeyumm.exe` + copy CEF runtime to `dist/` |
+| `bun run build:dev` | Full build with no minification and inline sourcemaps |
+| `bun run build:ts` | TS bundle + exe compile only (no MSVC). Fast for TS-only changes. |
+| `bun build.ts --dev --skip-native` | TS-only build, unminified with sourcemaps |
 
 ## Run
 

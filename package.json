@@ -4,7 +4,8 @@
   "description": "Minimal Windows CEF browser with D3D output, Spout I/O, and multi-display support",
   "scripts": {
     "build": "bun build.ts",
-    "dev": "bun build.ts --dev",
+    "build:dev": "bun build.ts --dev",
+    "build:ts": "bun build.ts --skip-native",
     "start": "dist/chromeyumm.exe",
     "demo": "bun scripts/r3f.ts",
     "release": "bun scripts/release.ts",
