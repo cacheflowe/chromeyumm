@@ -11,9 +11,6 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 
 ## Backlog
 
-- Automated smoke test (DLL loads, FFI symbols resolve)
-  - Can we test video codes, webcam access, webgpu, serial device api, other related web features we want to ensure?
-- Make sure chromium flags are as permissive as possible in all cases (e.g. allow file access, mixed content, etc.)
 - CI build pipeline (GitHub Actions, self-hosted runner for MSVC + CEF)
 - Crash/error logging to disk
 - Add automated system to pull latest Spout / CEF versions into codebase
@@ -22,6 +19,10 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 
 ## Completed
 
+- Automated smoke test (`bun run test` / `bun scripts/smoke-test.ts`) — verifies DLL loads and all 34 FFI symbols resolve, cross-checks against dumpbin exports when available. Web feature detection page at `src/views/feature-check/index.html` covers WebGL/WebGPU, video codecs, hardware APIs (Serial, Bluetooth, USB, HID, MIDI, Gamepad), camera/mic enumeration, and Chromeyumm state.
+- Permissive chromium flags — added `use-angle=d3d11`, `enable-gpu-rasterization`, `allow-file-access-from-files`, `allow-running-insecure-content`, `disable-site-isolation-trials`, `autoplay-policy=no-user-gesture-required`, `use-fake-ui-for-media-stream`, `enable-usermedia-screen-capturing`, `enable-experimental-web-platform-features`, `enable-webgpu-developer-features`. All overridable via `build.json` chromiumFlags.
+- NDW interactive input forwarding — `interactiveWindows: true` in display-config.json enables mouse event forwarding from borderless display windows to CEF (visitor-safe alternative to Ctrl+M interactive mode)
+- Hotkey suspend/resume hardening — removed flag-based early returns in `suspendHotkeys`/`resumeHotkeys`, resume now unconditionally unregisters+re-registers to clear stale OS state. Bun keepalive interval reduced from ~12 days to 250ms for reliable threadsafe callback delivery.
 - Phase 1: PrintWindow multi-window output
 - Phase 2c: Windows Graphics Capture (Spout output)
 - Phase 2d: OSR OnAcceleratedPaint (Spout output) — **0% Intel, 15% NVIDIA**

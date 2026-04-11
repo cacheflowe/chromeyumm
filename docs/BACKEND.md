@@ -43,8 +43,20 @@ The "backend" is `libNativeWrapper.dll` — a single C++ DLL compiled from `nati
 | Item | Purpose |
 |---|---|
 | `g_windowIdToHwnd` | Map populated in `createWindowWithFrameAndStyleFromWorker` |
-| `DisplayWindowProc` | Custom WndProc: blocks cursor, blocks close events |
+| `DisplayWindowProc` | Custom WndProc: blocks cursor, blocks close events, forwards mouse input |
 | `g_displayWindows` | Active display window tracking |
+| `DisplayWindowInputState` | Per-HWND struct: webviewId, source rect, cached `CefRefPtr<CefBrowser>`, showCursor flag |
+| `g_displayWindowInputMap` | Map of HWND → `DisplayWindowInputState` (empty when input forwarding is off) |
+
+### Mouse Input — Two Modes
+
+There are two ways mouse input reaches CEF:
+
+**1. Interactive mode (Ctrl+M)** — the master window is shown, display windows are hidden. The master window's `ContainerView` WndProc handles `WM_LBUTTON*` etc. directly and routes them to `CEFView::HandleWindowMessage` → `OSRWindow::HandleMouseEvent` → `CefBrowserHost::SendMouseClickEvent`. Mouse coords are 1:1 (master window = virtual canvas size). `SetCapture`/`ReleaseCapture` ensure button-up events aren't lost. `CefBrowserHost::SetFocus(true)` is called on button-down to keep CEF's internal focus state correct.
+
+**2. Display window input (`interactiveWindows: true`)** — display windows stay visible and borderless (visitor-safe). `DisplayWindowProc` handles `WM_MOUSEMOVE`, `WM_LBUTTON*`, `WM_RBUTTON*`, `WM_MBUTTON*`, `WM_MOUSEWHEEL`. It translates NDW-local pixel coords → virtual canvas coords using the source rect stored in `DisplayWindowInputState`, then calls `CefBrowserHost::SendMouseClickEvent`/`SendMouseMoveEvent`/`SendMouseWheelEvent`. The browser pointer is cached at enable time (via `findBrowserByWebviewId`) to avoid a per-event map scan. Cursor visibility is controlled per-window via `WM_SETCURSOR`.
+
+**Enabling display window input**: call `enableDisplayWindowInput(displayWindowId, webviewId, srcX, srcY, srcW, srcH, enable, showCursor)`. The TS layer calls this automatically for each display window when `interactiveWindows: true` is in `display-config.json`.
 
 ## FFI Symbol Map
 
@@ -86,6 +98,7 @@ All FFI symbols are declared in `src/chromeyumm/ffi.ts`. The full export list:
 - `setNativeDisplayWindowVisible(id, visible)`
 - `setNativeDisplayWindowAlwaysOnTop(id, enabled)`
 - `setNativeDisplayWindowFullScreen(id, enabled)`
+- `enableDisplayWindowInput(displayId, webviewId, srcX, srcY, srcW, srcH, enable, showCursor)`
 
 ### Global Shortcuts
 - `setGlobalShortcutCallback(callback)`

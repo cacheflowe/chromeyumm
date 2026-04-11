@@ -27,8 +27,9 @@ To avoid hijacking key combos from other applications, hotkeys are **suspended w
 
 ## Edge Cases
 - Ctrl+D works on any page via auto-injection (`dist/debug-inject.js` evaluated on did-navigate)
-- Ctrl+M and Ctrl+Shift+M are not registered when Spout output is active (master window stays visible for Spout; display windows are managed by D3D output)
+- Ctrl+M and Ctrl+Shift+M are only registered when D3D output is active (`useD3DOutput` flag) — not needed when Spout-only (master window stays visible)
 - `loadURL()` is broken — Ctrl+R uses `location.reload()` instead
+- Hotkeys are suspended/resumed on app focus changes via `SetWinEventHook(EVENT_SYSTEM_FOREGROUND)`. Resume unconditionally unregisters+re-registers to clear stale OS state.
 
 ## Out of Scope
 - Custom/configurable hotkeys

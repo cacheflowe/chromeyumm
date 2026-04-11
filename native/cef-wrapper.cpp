@@ -161,6 +161,7 @@ struct DisplayWindowInputState {
     uint32_t webviewId;
     int      sourceX, sourceY, sourceW, sourceH; // virtual canvas rect
     bool     showCursor;
+    CefRefPtr<CefBrowser> browser; // cached — resolved once at enable time
 };
 static std::map<HWND, DisplayWindowInputState> g_displayWindowInputMap;
 
@@ -428,6 +429,20 @@ static int g_browser_count = 0;
 // Global map to store pending URLs for async browser creation
 static std::map<HWND, std::string> g_pendingUrls;
 
+// Look up a CefBrowser by webviewId (reverse lookup through browserToWebviewMap).
+// Caller must NOT hold browserMapMutex — this acquires it internally.
+static CefRefPtr<CefBrowser> findBrowserByWebviewId(uint32_t webviewId) {
+    std::lock_guard<std::mutex> lock(browserMapMutex);
+    for (auto& kv : browserToWebviewMap) {
+        if (kv.second == webviewId) {
+            auto it = g_cefBrowsers.find(kv.first);
+            if (it != g_cefBrowsers.end()) return it->second;
+            break;
+        }
+    }
+    return nullptr;
+}
+
 // Permission cache types and functions are in shared/permissions.h
 
 
@@ -527,13 +542,35 @@ public:
     }
 
     void OnBeforeCommandLineProcessing(const CefString& process_type, CefRefPtr<CefCommandLine> command_line) override {
-        // Windows default flags — can be overridden via chromiumFlags in config
+        // Windows default flags — can be overridden via chromiumFlags in build.json.
+        // Goal: maximum permissiveness for live installation use (local URLs,
+        // hardware access, experimental APIs). Any flag can be disabled by
+        // setting it to false in build.json's chromiumFlags.
         static const std::vector<chromeyumm::DefaultFlag> defaults = {
-            {"in-process-gpu", ""},
-            {"disable-web-security", ""},
-            {"disable-features=VizDisplayCompositor", ""},
-            {"remote-allow-origins", "*"},
-            {"allow-insecure-localhost", ""},
+            // GPU / rendering
+            {"in-process-gpu", ""},                      // required for ANGLE d3d11 OSR
+            {"use-angle", "d3d11"},                      // explicit ANGLE backend
+            {"enable-gpu-rasterization", ""},             // GPU-accelerated raster
+
+            // Security (relaxed for installation use — trusted local content)
+            {"disable-web-security", ""},                 // no CORS
+            {"allow-insecure-localhost", ""},              // self-signed local certs
+            {"allow-file-access-from-files", ""},         // file:// cross-origin
+            {"allow-running-insecure-content", ""},       // mixed HTTP/HTTPS
+            {"disable-site-isolation-trials", ""},        // no process-per-site
+
+            // Media / hardware access
+            {"autoplay-policy", "no-user-gesture-required"}, // autoplay video/audio
+            {"use-fake-ui-for-media-stream", ""},         // skip camera/mic permission UI
+            {"enable-usermedia-screen-capturing", ""},    // screen capture API
+
+            // Experimental web APIs
+            {"enable-experimental-web-platform-features", ""}, // WebGPU, Serial, Bluetooth, etc.
+            {"enable-webgpu-developer-features", ""},     // WebGPU extras
+
+            // CEF / compositor
+            {"disable-features", "VizDisplayCompositor"}, // required for OSR shared texture
+            {"remote-allow-origins", "*"},                // DevTools from any origin
         };
         chromeyumm::applyDefaultFlags(defaults, g_userChromiumFlags.skip, command_line);
 
@@ -6158,14 +6195,8 @@ CHROMEYUMM_EXPORT void hideWindow(void *window) {
         // so CEF keeps delivering OnAcceleratedPaint after the window is hidden.
         for (auto& kv : g_spoutWindows) {
             if (kv.second.hwnd == hwnd && kv.second.active) {
-                for (auto& bkv : browserToWebviewMap) {
-                    if (bkv.second == kv.first) {
-                        auto bIt = g_cefBrowsers.find(bkv.first);
-                        if (bIt != g_cefBrowsers.end() && bIt->second)
-                            bIt->second->GetHost()->WasHidden(false);
-                        break;
-                    }
-                }
+                auto browser = findBrowserByWebviewId(kv.first);
+                if (browser) browser->GetHost()->WasHidden(false);
             }
         }
     });
@@ -6453,46 +6484,26 @@ static LRESULT CALLBACK DisplayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     }
     // --- Input forwarding to CEF (when enabled via enableDisplayWindowInput) ---
     case WM_MOUSEMOVE:
-    case WM_LBUTTONDOWN:
-    case WM_LBUTTONUP:
-    case WM_RBUTTONDOWN:
-    case WM_RBUTTONUP:
-    case WM_MBUTTONDOWN:
-    case WM_MBUTTONUP:
+    case WM_LBUTTONDOWN: case WM_LBUTTONUP:
+    case WM_RBUTTONDOWN: case WM_RBUTTONUP:
+    case WM_MBUTTONDOWN: case WM_MBUTTONUP:
     case WM_MOUSEWHEEL: {
         auto inputIt = g_displayWindowInputMap.find(hwnd);
-        if (inputIt == g_displayWindowInputMap.end()) break; // not interactive
+        if (inputIt == g_displayWindowInputMap.end()) break;
 
         auto& dis = inputIt->second;
-
-        // Translate NDW-local pixel coords → virtual canvas coords.
-        //   virtualX = sourceX + localX * (sourceW / clientW)
-        RECT rc;
-        GetClientRect(hwnd, &rc);
-        int clientW = rc.right  ? rc.right  : 1;
-        int clientH = rc.bottom ? rc.bottom : 1;
-        int localX = GET_X_LPARAM(lParam);
-        int localY = GET_Y_LPARAM(lParam);
-        int canvasX = dis.sourceX + (int)((double)localX / clientW * dis.sourceW);
-        int canvasY = dis.sourceY + (int)((double)localY / clientH * dis.sourceH);
-
-        // Find browser for this webviewId
-        CefRefPtr<CefBrowser> browser;
-        for (auto& bkv : browserToWebviewMap) {
-            if (bkv.second == dis.webviewId) {
-                auto bIt = g_cefBrowsers.find(bkv.first);
-                if (bIt != g_cefBrowsers.end()) browser = bIt->second;
-                break;
-            }
-        }
-        if (!browser) break;
-
-        CefRefPtr<CefBrowserHost> host = browser->GetHost();
+        if (!dis.browser) break;
+        CefRefPtr<CefBrowserHost> host = dis.browser->GetHost();
         if (!host) break;
 
+        // Translate NDW-local pixel coords → virtual canvas coords
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        int cw = rc.right  ? rc.right  : 1;
+        int ch = rc.bottom ? rc.bottom : 1;
         CefMouseEvent me;
-        me.x = canvasX;
-        me.y = canvasY;
+        me.x = dis.sourceX + (int)((double)GET_X_LPARAM(lParam) / cw * dis.sourceW);
+        me.y = dis.sourceY + (int)((double)GET_Y_LPARAM(lParam) / ch * dis.sourceH);
         me.modifiers = 0;
         if (wParam & MK_CONTROL) me.modifiers |= EVENTFLAG_CONTROL_DOWN;
         if (wParam & MK_SHIFT)   me.modifiers |= EVENTFLAG_SHIFT_DOWN;
@@ -6503,16 +6514,12 @@ static LRESULT CALLBACK DisplayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         } else if (msg == WM_MOUSEWHEEL) {
             host->SendMouseWheelEvent(me, 0, GET_WHEEL_DELTA_WPARAM(wParam));
         } else {
-            bool isDown = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN);
-            CefBrowserHost::MouseButtonType btn =
-                (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) ? MBT_LEFT :
-                (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) ? MBT_RIGHT : MBT_MIDDLE;
-            if (isDown) {
-                SetCapture(hwnd);
-                host->SetFocus(true);
-            }
-            host->SendMouseClickEvent(me, btn, !isDown, 1);
-            if (!isDown) ReleaseCapture();
+            bool down = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN);
+            auto btn  = (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) ? MBT_LEFT
+                      : (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) ? MBT_RIGHT : MBT_MIDDLE;
+            if (down) { SetCapture(hwnd); host->SetFocus(true); }
+            host->SendMouseClickEvent(me, btn, !down, 1);
+            if (!down) ReleaseCapture();
         }
         return 0;
     }
@@ -6824,14 +6831,8 @@ CHROMEYUMM_EXPORT bool startD3DOutput(uint32_t webviewId) {
     // Tell CEF to keep rendering even when the host HWND is hidden.
     // Without this, ShowWindow(SW_HIDE) on the master HWND causes CEF's compositor
     // to pause OnAcceleratedPaint delivery.
-    for (auto& kv : browserToWebviewMap) {
-        if (kv.second == webviewId) {
-            auto bIt = g_cefBrowsers.find(kv.first);
-            if (bIt != g_cefBrowsers.end() && bIt->second)
-                bIt->second->GetHost()->WasHidden(false);
-            break;
-        }
-    }
+    auto browser = findBrowserByWebviewId(webviewId);
+    if (browser) browser->GetHost()->WasHidden(false);
 
     // Create empty slot list for this webviewId.
     g_d3dOutputStates[webviewId] = D3DOutputState{};
@@ -6899,12 +6900,13 @@ CHROMEYUMM_EXPORT void enableDisplayWindowInput(
     HWND hwnd = hwndIt->second;
     if (enable) {
         DisplayWindowInputState state;
-        state.webviewId = webviewId;
-        state.sourceX   = srcX;
-        state.sourceY   = srcY;
-        state.sourceW   = srcW;
-        state.sourceH   = srcH;
+        state.webviewId  = webviewId;
+        state.sourceX    = srcX;
+        state.sourceY    = srcY;
+        state.sourceW    = srcW;
+        state.sourceH    = srcH;
         state.showCursor = showCursor;
+        state.browser    = findBrowserByWebviewId(webviewId);
         g_displayWindowInputMap[hwnd] = state;
     } else {
         g_displayWindowInputMap.erase(hwnd);

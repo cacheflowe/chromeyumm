@@ -7,6 +7,7 @@
     "build:dev": "bun build.ts --dev",
     "build:ts": "bun build.ts --skip-native",
     "start": "dist/chromeyumm.exe",
+    "test": "bun scripts/smoke-test.ts",
     "demo": "bun scripts/r3f.ts",
     "release": "bun scripts/release.ts",
     "release:publish": "bun scripts/release.ts --publish"

@@ -47,6 +47,7 @@ As an installation designer, I want to define my display layout, canvas size, co
 | `alwaysOnTop` | boolean | `false` | Set display windows alwaysOnTop |
 | `fullscreen` | boolean | `false` | Set display windows fullscreen |
 | `startInteractive` | boolean | `false` | Start in interactive mode (master visible) |
+| `interactiveWindows` | boolean | `false` | Forward mouse input from display windows to CEF (visitor-safe touch/click) |
 | `contentUrl` | string \| null | `null` | Content URL to load |
 | `spoutOutput` | `{senderName}` | — | Enable Spout output mode (disables D3D multi-window) |
 | `spoutInput` | `{senderName}` | — | Enable Spout input receiver |

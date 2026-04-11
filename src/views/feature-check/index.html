@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chromeyumm Feature Check</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d0e14; color: #ccc; font: 14px/1.6 monospace; padding: 24px; }
+    h1 { color: #fff; font-size: 18px; margin-bottom: 16px; }
+    .group { margin-bottom: 20px; }
+    .group h2 { color: #888; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+    .row { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .ok  { background: #0f0; }
+    .no  { background: #f33; }
+    .warn { background: #fa0; }
+    .label { color: #aaa; }
+    .value { color: #fff; margin-left: auto; text-align: right; max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <h1>Chromeyumm Feature Detection</h1>
+  <div id="results"></div>
+  <script type="module">
+    const el = document.getElementById("results");
+
+    function group(title) {
+      const g = document.createElement("div");
+      g.className = "group";
+      g.innerHTML = `<h2>${title}</h2>`;
+      el.appendChild(g);
+      return g;
+    }
+
+    function row(parent, label, ok, value = "") {
+      const r = document.createElement("div");
+      r.className = "row";
+      const status = ok === true ? "ok" : ok === false ? "no" : "warn";
+      r.innerHTML = `<span class="dot ${status}"></span><span class="label">${label}</span><span class="value">${value}</span>`;
+      parent.appendChild(r);
+    }
+
+    // ── GPU / Rendering ──
+    const gpu = group("GPU / Rendering");
+    row(gpu, "WebGL 1", !!document.createElement("canvas").getContext("webgl"), "");
+    row(gpu, "WebGL 2", !!document.createElement("canvas").getContext("webgl2"), "");
+    {
+      const gl = document.createElement("canvas").getContext("webgl2") || document.createElement("canvas").getContext("webgl");
+      if (gl) {
+        const ext = gl.getExtension("WEBGL_debug_renderer_info");
+        const renderer = ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : "n/a";
+        row(gpu, "GPU Renderer", true, renderer);
+      }
+    }
+    row(gpu, "OffscreenCanvas", typeof OffscreenCanvas !== "undefined");
+    try {
+      const adapter = await navigator.gpu?.requestAdapter();
+      row(gpu, "WebGPU", !!adapter, adapter ? (await adapter.requestAdapterInfo?.())?.device || "available" : "");
+    } catch {
+      row(gpu, "WebGPU", false);
+    }
+
+    // ── Video / Audio Codecs ──
+    const media = group("Video / Audio Codecs");
+    const codecs = [
+      ["H.264 (AVC)", 'video/mp4; codecs="avc1.42E01E"'],
+      ["H.265 (HEVC)", 'video/mp4; codecs="hev1.1.6.L93.B0"'],
+      ["VP8", 'video/webm; codecs="vp8"'],
+      ["VP9", 'video/webm; codecs="vp9"'],
+      ["AV1", 'video/mp4; codecs="av01.0.01M.08"'],
+      ["AAC", 'audio/mp4; codecs="mp4a.40.2"'],
+      ["Opus", 'audio/webm; codecs="opus"'],
+      ["FLAC", 'audio/flac'],
+    ];
+    for (const [name, mime] of codecs) {
+      const support = MediaSource.isTypeSupported?.(mime);
+      row(media, name, support, mime);
+    }
+
+    // ── Hardware Access ──
+    const hw = group("Hardware Access");
+    row(hw, "getUserMedia (camera/mic)", !!navigator.mediaDevices?.getUserMedia);
+    row(hw, "getDisplayMedia (screen)", !!navigator.mediaDevices?.getDisplayMedia);
+    row(hw, "Web Serial", !!navigator.serial);
+    row(hw, "Web Bluetooth", !!navigator.bluetooth);
+    row(hw, "Web USB", !!navigator.usb);
+    row(hw, "Web HID", !!navigator.hid);
+    row(hw, "Web MIDI", !!navigator.requestMIDIAccess);
+    row(hw, "Gamepad", !!navigator.getGamepads);
+
+    // Try enumerating devices (will test permission auto-grant)
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === "videoinput").length;
+      const mics = devices.filter(d => d.kind === "audioinput").length;
+      row(hw, "Cameras detected", cams > 0, String(cams));
+      row(hw, "Microphones detected", mics > 0, String(mics));
+    } catch (e) {
+      row(hw, "enumerateDevices", false, e.message);
+    }
+
+    // ── Web APIs ──
+    const apis = group("Web APIs");
+    row(apis, "WebSocket", typeof WebSocket !== "undefined");
+    row(apis, "WebRTC", !!window.RTCPeerConnection);
+    row(apis, "Web Workers", typeof Worker !== "undefined");
+    row(apis, "SharedArrayBuffer", typeof SharedArrayBuffer !== "undefined");
+    row(apis, "Web Animations", !!Element.prototype.animate);
+    row(apis, "ResizeObserver", typeof ResizeObserver !== "undefined");
+    row(apis, "IntersectionObserver", typeof IntersectionObserver !== "undefined");
+    row(apis, "Fullscreen API", !!document.documentElement.requestFullscreen);
+    row(apis, "Clipboard API", !!navigator.clipboard);
+    row(apis, "File System Access", !!window.showOpenFilePicker);
+    row(apis, "Storage (IndexedDB)", !!window.indexedDB);
+    row(apis, "Storage (localStorage)", !!window.localStorage);
+
+    // ── Performance ──
+    const perf = group("Performance");
+    row(perf, "Hardware Concurrency", true, String(navigator.hardwareConcurrency));
+    row(perf, "Device Memory", !!navigator.deviceMemory, navigator.deviceMemory ? navigator.deviceMemory + " GB" : "n/a");
+    row(perf, "User Agent", true, navigator.userAgent.split(" ").pop());
+
+    // ── Chromeyumm-specific ──
+    const cy = group("Chromeyumm");
+    row(cy, "window.__chromeyumm", !!window.__chromeyumm);
+    if (window.__chromeyumm) {
+      row(cy, "  interactiveMode", null, String(window.__chromeyumm.interactiveMode));
+      row(cy, "  alwaysOnTop", null, String(window.__chromeyumm.alwaysOnTop));
+      if (window.__chromeyumm.display) {
+        row(cy, "  virtualCanvas", null, `${window.__chromeyumm.display.virtualCanvas?.width}×${window.__chromeyumm.display.virtualCanvas?.height}`);
+      }
+    }
+  </script>
+</body>
+</html>
