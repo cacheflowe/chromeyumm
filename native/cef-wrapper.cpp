@@ -154,6 +154,16 @@ static std::map<uint32_t, HWND>        g_windowIdToHwnd;      // BrowserWindow i
 static std::map<uint32_t, HWND>        g_displayWindows;      // display window id → HWND
 static std::map<uint32_t, HTHUMBNAIL>  g_displayThumbnails;   // display window id → thumbnail
 
+// NativeDisplayWindow input forwarding — maps HWND → routing info so
+// DisplayWindowProc can translate local coords → virtual canvas coords
+// and forward to the correct CEF browser.
+struct DisplayWindowInputState {
+    uint32_t webviewId;
+    int      sourceX, sourceY, sourceW, sourceH; // virtual canvas rect
+    bool     showCursor;
+};
+static std::map<HWND, DisplayWindowInputState> g_displayWindowInputMap;
+
 // Forward declaration — log() is defined later in the file.
 void log(const std::string& message);
 
@@ -1468,16 +1478,10 @@ public:
 
     // Handle mouse events and forward to CEF
     void HandleMouseEvent(UINT message, WPARAM wParam, LPARAM lParam) {
-        if (!browser_) {
-            printf("OSRWindow: No browser set!\n");
-            return;
-        }
+        if (!browser_) return;
 
         CefRefPtr<CefBrowserHost> host = browser_->GetHost();
-        if (!host) {
-            printf("OSRWindow: No browser host!\n");
-            return;
-        }
+        if (!host) return;
 
         CefMouseEvent mouse_event;
         mouse_event.x = GET_X_LPARAM(lParam);
@@ -1497,11 +1501,14 @@ public:
             case WM_LBUTTONDOWN:
             case WM_RBUTTONDOWN:
             case WM_MBUTTONDOWN: {
+                // Capture the mouse so the matching button-up arrives even if the
+                // cursor leaves the window, and tell CEF the browser has focus.
+                SetCapture(parent_);
+                host->SetFocus(true);
+
                 CefBrowserHost::MouseButtonType btn_type =
                     (message == WM_LBUTTONDOWN) ? MBT_LEFT :
                     (message == WM_RBUTTONDOWN) ? MBT_RIGHT : MBT_MIDDLE;
-
-                printf("OSRWindow: Sending click at (%d, %d)\n", mouse_event.x, mouse_event.y);
 
                 host->SendMouseClickEvent(mouse_event, btn_type, false, 1);
                 break;
@@ -1514,6 +1521,7 @@ public:
                     (message == WM_LBUTTONUP) ? MBT_LEFT :
                     (message == WM_RBUTTONUP) ? MBT_RIGHT : MBT_MIDDLE;
                 host->SendMouseClickEvent(mouse_event, btn_type, true, 1);
+                ReleaseCapture();
                 break;
             }
 
@@ -3427,6 +3435,12 @@ private:
                 // In Spout/single-window mode, the CEFView is registered under the
                 // container HWND (non-transparent path). This is the only way OSR
                 // browsers receive input — they don't have their own HWND.
+                //
+                // On button-down, also take keyboard focus so subsequent
+                // WM_KEYDOWN/WM_CHAR messages arrive at this container.
+                if (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN) {
+                    SetFocus(m_hwnd);
+                }
                 auto viewIt = g_cefViews.find(m_hwnd);
                 if (viewIt != g_cefViews.end()) {
                     CEFView* cefView = static_cast<CEFView*>(viewIt->second);
@@ -6114,6 +6128,23 @@ CHROMEYUMM_EXPORT void showWindow(void *window) {
         // Bring to top of Z-order
         SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0, 
                     SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+
+        // Focus the container child window so keyboard events reach the
+        // ContainerView WndProc (which forwards them to CEF).  Also tell
+        // CEF that its browser has focus for proper input handling.
+        auto containerIt = g_containerViews.find(hwnd);
+        if (containerIt != g_containerViews.end()) {
+            HWND containerHwnd = containerIt->second->GetHwnd();
+            if (containerHwnd) SetFocus(containerHwnd);
+
+            auto viewIt = g_cefViews.find(containerHwnd);
+            if (viewIt != g_cefViews.end()) {
+                auto cefView = static_cast<CEFView*>(viewIt->second);
+                if (cefView && cefView->isOSRMode() && cefView->getBrowser()) {
+                    cefView->getBrowser()->GetHost()->SetFocus(true);
+                }
+            }
+        }
         
     });
 }
@@ -6411,15 +6442,84 @@ static LRESULT CALLBACK DisplayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         // Suppress Alt+F4 and system close — display windows should only be
         // destroyed programmatically via destroyNativeDisplayWindow().
         return 0;
-    case WM_SETCURSOR:
-        // Hide the cursor over display windows in output mode.
-        // When the master window is on-screen (interactive mode) the cursor
-        // is handled by the CEF webview and appears normally there instead.
-        SetCursor(NULL);
+    case WM_SETCURSOR: {
+        auto inputIt = g_displayWindowInputMap.find(hwnd);
+        if (inputIt != g_displayWindowInputMap.end() && inputIt->second.showCursor) {
+            SetCursor(LoadCursor(NULL, IDC_ARROW));
+        } else {
+            SetCursor(NULL);
+        }
         return TRUE;
+    }
+    // --- Input forwarding to CEF (when enabled via enableDisplayWindowInput) ---
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_MOUSEWHEEL: {
+        auto inputIt = g_displayWindowInputMap.find(hwnd);
+        if (inputIt == g_displayWindowInputMap.end()) break; // not interactive
+
+        auto& dis = inputIt->second;
+
+        // Translate NDW-local pixel coords → virtual canvas coords.
+        //   virtualX = sourceX + localX * (sourceW / clientW)
+        RECT rc;
+        GetClientRect(hwnd, &rc);
+        int clientW = rc.right  ? rc.right  : 1;
+        int clientH = rc.bottom ? rc.bottom : 1;
+        int localX = GET_X_LPARAM(lParam);
+        int localY = GET_Y_LPARAM(lParam);
+        int canvasX = dis.sourceX + (int)((double)localX / clientW * dis.sourceW);
+        int canvasY = dis.sourceY + (int)((double)localY / clientH * dis.sourceH);
+
+        // Find browser for this webviewId
+        CefRefPtr<CefBrowser> browser;
+        for (auto& bkv : browserToWebviewMap) {
+            if (bkv.second == dis.webviewId) {
+                auto bIt = g_cefBrowsers.find(bkv.first);
+                if (bIt != g_cefBrowsers.end()) browser = bIt->second;
+                break;
+            }
+        }
+        if (!browser) break;
+
+        CefRefPtr<CefBrowserHost> host = browser->GetHost();
+        if (!host) break;
+
+        CefMouseEvent me;
+        me.x = canvasX;
+        me.y = canvasY;
+        me.modifiers = 0;
+        if (wParam & MK_CONTROL) me.modifiers |= EVENTFLAG_CONTROL_DOWN;
+        if (wParam & MK_SHIFT)   me.modifiers |= EVENTFLAG_SHIFT_DOWN;
+        if (GetKeyState(VK_MENU) & 0x8000) me.modifiers |= EVENTFLAG_ALT_DOWN;
+
+        if (msg == WM_MOUSEMOVE) {
+            host->SendMouseMoveEvent(me, false);
+        } else if (msg == WM_MOUSEWHEEL) {
+            host->SendMouseWheelEvent(me, 0, GET_WHEEL_DELTA_WPARAM(wParam));
+        } else {
+            bool isDown = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN);
+            CefBrowserHost::MouseButtonType btn =
+                (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) ? MBT_LEFT :
+                (msg == WM_RBUTTONDOWN || msg == WM_RBUTTONUP) ? MBT_RIGHT : MBT_MIDDLE;
+            if (isDown) {
+                SetCapture(hwnd);
+                host->SetFocus(true);
+            }
+            host->SendMouseClickEvent(me, btn, !isDown, 1);
+            if (!isDown) ReleaseCapture();
+        }
+        return 0;
+    }
     default:
         return DefWindowProc(hwnd, msg, wParam, lParam);
     }
+    return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
 CHROMEYUMM_EXPORT HWND createNativeDisplayWindow(
@@ -6785,6 +6885,30 @@ CHROMEYUMM_EXPORT bool addD3DOutputSlot(uint32_t webviewId, uint32_t displayWind
           " src=(" + std::to_string(srcX) + "," + std::to_string(srcY) +
           " " + std::to_string(srcW) + "x" + std::to_string(srcH) + ")");
     return true;
+}
+
+// Enable or disable mouse input forwarding on a NativeDisplayWindow.
+// When enabled, DisplayWindowProc translates local pixel coords → virtual
+// canvas coords using the source rect, then sends CEF mouse events.
+CHROMEYUMM_EXPORT void enableDisplayWindowInput(
+        uint32_t displayWindowId, uint32_t webviewId,
+        int srcX, int srcY, int srcW, int srcH,
+        bool enable, bool showCursor) {
+    auto hwndIt = g_displayWindows.find(displayWindowId);
+    if (hwndIt == g_displayWindows.end()) return;
+    HWND hwnd = hwndIt->second;
+    if (enable) {
+        DisplayWindowInputState state;
+        state.webviewId = webviewId;
+        state.sourceX   = srcX;
+        state.sourceY   = srcY;
+        state.sourceW   = srcW;
+        state.sourceH   = srcH;
+        state.showCursor = showCursor;
+        g_displayWindowInputMap[hwnd] = state;
+    } else {
+        g_displayWindowInputMap.erase(hwnd);
+    }
 }
 
 // Stop D3D output, release all NDW swap chains, and tear down the SpoutWindowState device.
@@ -8730,7 +8854,6 @@ static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 static void suspendHotkeys() {
     if (!g_hotkeyWindow) return;
     std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-    if (!g_hotkeysCurrentlyRegistered) return;
     for (const auto& pair : g_hotkeyRegistrations) {
         UnregisterHotKey(g_hotkeyWindow, pair.first);
     }
@@ -8743,13 +8866,19 @@ static void suspendHotkeys() {
 static void resumeHotkeys() {
     if (!g_hotkeyWindow) return;
     std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-    if (g_hotkeysCurrentlyRegistered) return;
+    int registered = 0;
     for (const auto& pair : g_hotkeyRegistrations) {
         const HotkeyRegistration& reg = pair.second;
-        RegisterHotKey(g_hotkeyWindow, reg.hotkeyId, reg.modifiers, reg.vkCode);
+        // Always unregister first to clear any stale OS-level state, then re-register.
+        UnregisterHotKey(g_hotkeyWindow, reg.hotkeyId);
+        if (RegisterHotKey(g_hotkeyWindow, reg.hotkeyId, reg.modifiers, reg.vkCode)) {
+            registered++;
+        } else {
+            ::log("GlobalShortcut: Failed to resume '" + reg.accelerator + "' (Win32 error " + std::to_string(GetLastError()) + ")");
+        }
     }
     g_hotkeysCurrentlyRegistered = true;
-    ::log("GlobalShortcut: Resumed (app gained focus, " + std::to_string(g_hotkeyRegistrations.size()) + " hotkeys)");
+    ::log("GlobalShortcut: Resumed (app gained focus, " + std::to_string(registered) + "/" + std::to_string(g_hotkeyRegistrations.size()) + " hotkeys)");
 }
 
 // WinEvent hook callback — monitors foreground window changes to suspend/resume hotkeys

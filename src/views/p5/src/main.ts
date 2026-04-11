@@ -56,9 +56,7 @@ new p5((p: p5) => {
   p.draw = () => {
     Engine.update(engine, 1000 / 60);
 
-    // Semi-transparent clear → motion trails
-    p.background(12, 14, 22, 35);
-    p.background(12, 14, 22, 255);
+    p.background(12, 14, 22);
 
     // Auto-spawn from top
     const now = p.millis();
@@ -87,7 +85,6 @@ new p5((p: p5) => {
     for (const body of shapes) {
       const rd = (body as any)._rd as RenderData | undefined;
       if (!rd) continue;
-      p.noStroke();
       p.stroke(0);
       p.strokeWeight(1);
       p.fill(rd.color);

@@ -1,6 +1,11 @@
 {
   "_comment": "display-config.json — window layout for installation-browser",
 
+  "fullscreen": false,
+  "alwaysOnTop": true,
+  "interactiveWindows": false,
+  "contentUrl": "http://localhost:5175",
+
   "virtualCanvas": {
     "_comment": "Total virtual canvas size in virtual pixels.",
     "width": 1920,
@@ -22,12 +27,6 @@
       "source": { "x": 0, "y": 960, "width": 1920, "height": 960 }
     }
   ],
-
-  "fullscreen": false,
-  "alwaysOnTop": true,
-
-  "_contentUrl_options": "http://localhost:5173 = Vite dev server | http://localhost:5174 = alternate port",
-  "contentUrl": "http://localhost:5173",
 
   "_spoutOutput_comment": "Spout output — GPU texture sharing (Windows only). Requires SpoutLibrary.dll + SpoutLibrary.h in package/src/native/win/vendor/spout/ and a full rebuild.",
   "spoutOutput": {

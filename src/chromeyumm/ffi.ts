@@ -129,6 +129,32 @@ export const native = (() => {
       setNativeDisplayWindowVisible: { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
       setNativeDisplayWindowAlwaysOnTop: { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
       setNativeDisplayWindowFullScreen: { args: [FFIType.u32, FFIType.bool], returns: FFIType.void },
+      enableDisplayWindowInput: {
+        args: [
+          FFIType.u32,
+          FFIType.u32,
+          FFIType.i32,
+          FFIType.i32,
+          FFIType.i32,
+          FFIType.i32,
+          FFIType.bool,
+          FFIType.bool,
+        ],
+        returns: FFIType.void,
+      },
+      enableDisplayWindowInput: {
+        args: [
+          FFIType.u32,
+          FFIType.u32,
+          FFIType.i32,
+          FFIType.i32,
+          FFIType.i32,
+          FFIType.i32,
+          FFIType.bool,
+          FFIType.bool,
+        ],
+        returns: FFIType.void,
+      },
 
       // ── Global shortcuts ─────────────────────────────────────────────────
       setGlobalShortcutCallback: { args: [FFIType.function], returns: FFIType.void },

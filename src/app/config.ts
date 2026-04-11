@@ -31,6 +31,7 @@ export interface DisplayConfig {
   virtualCanvas?: { width: number; height: number };
   windows: WindowConfig[];
   startInteractive?: boolean;
+  interactiveWindows?: boolean;
   fullscreen?: boolean;
   alwaysOnTop?: boolean;
   contentUrl?: string | null;

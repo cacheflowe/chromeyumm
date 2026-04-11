@@ -40,7 +40,7 @@ native.symbols.initEventLoop(cs("chromeyumm"), cs("Chromeyumm"), cs("stable"));
 // ---------------------------------------------------------------------------
 const HIDE_CURSOR_SCRIPT = `document.documentElement.style.setProperty('cursor','none','important')`;
 const SHOW_CURSOR_SCRIPT = `document.documentElement.style.removeProperty('cursor')`;
-const TOGGLE_PANEL_SCRIPT = `(function(){if(typeof window.__chromeyummToggle==='function')window.__chromeyummToggle();})()`;
+const TOGGLE_PANEL_SCRIPT = `window.__chromeyummToggle?.()`;
 
 // Auto-inject script — bundled from src/components/inject.js at build time.
 // Injects <debug-panel> into any page that doesn't already have one.
@@ -298,6 +298,21 @@ function createDisplayWindows() {
       const ok = master.addD3DOutputSlot(display.id, slot.sourceX, slot.sourceY, slot.sourceWidth, slot.sourceHeight);
       if (!ok) console.warn(`[chromeyumm] addD3DOutputSlot failed for display ${display.id}`);
     }
+
+    // Enable mouse input forwarding on display windows so visitors can
+    // interact without switching to interactive mode (Ctrl+M).
+    if (config?.interactiveWindows) {
+      native.symbols.enableDisplayWindowInput(
+        display.id,
+        master.webview.id,
+        slot.sourceX,
+        slot.sourceY,
+        slot.sourceWidth,
+        slot.sourceHeight,
+        true,
+        true, // enable, showCursor
+      );
+    }
   }
 }
 
@@ -342,7 +357,7 @@ function buildChromeyummState() {
     { key: "Ctrl+R", action: "reload" },
     { key: "Ctrl+F", action: "always-on-top", stateKey: "alwaysOnTop" },
   ];
-  if (!config?.spoutOutput) {
+  if (useD3DOutput) {
     hotkeys.push({ key: "Ctrl+M", action: "interactive mode", stateKey: "interactiveMode" });
     hotkeys.push({ key: "Ctrl+Shift+M", action: "reset windows" });
   }
@@ -409,7 +424,7 @@ master.webview.on("did-navigate", () => {
   if (debugInjectScript) master.webview.executeJavascript(debugInjectScript);
 });
 
-if (!config?.spoutOutput) {
+if (useD3DOutput) {
   GlobalShortcut.register("CommandOrControl+M", () => {
     interactiveMode = !interactiveMode;
     if (interactiveMode) {
@@ -423,7 +438,7 @@ if (!config?.spoutOutput) {
       master.webview.executeJavascript(HIDE_CURSOR_SCRIPT);
       console.log("[chromeyumm] Ctrl+M: interactive mode OFF");
     }
-    master.webview.executeJavascript(`if(window.__chromeyumm)window.__chromeyumm.interactiveMode=${interactiveMode}`);
+    master.webview.executeJavascript(`window.__chromeyumm && (window.__chromeyumm.interactiveMode=${interactiveMode})`);
   });
 
   GlobalShortcut.register("CommandOrControl+Shift+M", () => {
@@ -444,7 +459,7 @@ GlobalShortcut.register("CommandOrControl+F", () => {
   } else {
     displayWindows.forEach((w) => w.setAlwaysOnTop(alwaysOnTop));
   }
-  master.webview.executeJavascript(`if(window.__chromeyumm)window.__chromeyumm.alwaysOnTop=${alwaysOnTop}`);
+  master.webview.executeJavascript(`window.__chromeyumm && (window.__chromeyumm.alwaysOnTop=${alwaysOnTop})`);
   console.log(`[chromeyumm] Ctrl+F: alwaysOnTop → ${alwaysOnTop}`);
 });
 
@@ -463,4 +478,6 @@ GlobalShortcut.register("Escape", () => {
 
 // Keep Bun's event loop alive so CEF callbacks (did-navigate, shortcuts, etc.) can fire.
 // Without this, Bun exits as soon as top-level JS finishes.
-setInterval(() => {}, 1 << 30);
+// Poll at 250ms so threadsafe FFI callbacks (hotkeys, CEF events) are processed
+// promptly even if the uv_async wakeup from the native thread is missed.
+setInterval(() => {}, 250);
