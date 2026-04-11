@@ -558,17 +558,26 @@ public:
             {"allow-file-access-from-files", ""},         // file:// cross-origin
             {"allow-running-insecure-content", ""},       // mixed HTTP/HTTPS
             {"disable-site-isolation-trials", ""},        // no process-per-site
+            {"ignore-certificate-errors", ""},            // skip SSL warnings (self-signed certs)
+            {"disable-popup-blocking", ""},               // allow window.open() without gesture
 
             // Media / hardware access
             {"autoplay-policy", "no-user-gesture-required"}, // autoplay video/audio
             {"use-fake-ui-for-media-stream", ""},         // skip camera/mic permission UI
             {"enable-usermedia-screen-capturing", ""},    // screen capture API
 
+            // Touch / gesture lockdown (kiosk/installation safety)
+            {"disable-pinch", ""},                        // no pinch-to-zoom
+            {"overscroll-history-navigation", "0"},        // no swipe-to-go-back
+            {"pull-to-refresh", "0"},                      // no pull-to-refresh
+            {"disable-gesture-requirement-for-presentation", ""}, // Presentation API without gesture
+
             // Experimental web APIs
             {"enable-experimental-web-platform-features", ""}, // WebGPU, Serial, Bluetooth, etc.
             {"enable-webgpu-developer-features", ""},     // WebGPU extras
 
             // CEF / compositor
+            {"test-type", ""},                            // suppress "unsupported flag" warning
             {"disable-features", "VizDisplayCompositor"}, // required for OSR shared texture
             {"remote-allow-origins", "*"},                // DevTools from any origin
         };
