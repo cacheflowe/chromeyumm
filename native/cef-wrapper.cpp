@@ -6528,6 +6528,9 @@ CHROMEYUMM_EXPORT HWND createNativeDisplayWindow(
             applyAppIcon(hwnd);
             ShowWindow(hwnd, SW_SHOW);
             UpdateWindow(hwnd);
+            // Ensure hotkeys are registered now that a display window exists.
+            // They may have been suspended before this window was created.
+            resumeHotkeys();
         }
         return hwnd;
     });
@@ -8825,8 +8828,14 @@ static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM
 
 // Suspend hotkeys at the OS level (unregister without clearing our maps).
 // Called when the app loses focus so other apps can use those key combos.
+// Skipped when display windows are active: the operator is watching our output
+// and hotkeys must remain live regardless of which window has focus.
 static void suspendHotkeys() {
     if (!g_hotkeyWindow) return;
+    if (!g_displayWindows.empty()) {
+        ::log("GlobalShortcut: Suspension skipped (display windows active)");
+        return;
+    }
     std::lock_guard<std::mutex> lock(g_hotkeyMutex);
     for (const auto& pair : g_hotkeyRegistrations) {
         UnregisterHotKey(g_hotkeyWindow, pair.first);

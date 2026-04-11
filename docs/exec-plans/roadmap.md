@@ -12,7 +12,6 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 ## Backlog
 - ~~CI build pipeline~~ → moved to Completed
 - DDP output to FPP from p5 example? 
-- f12 key no longer working in CEF DevTools — investigate and re-enable
 - Crash/error logging to disk
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
 - Replace `RegisterHotKey` with window-level accelerators (`TranslateAccelerator` or `WM_KEYDOWN`) — current approach suspends/resumes hotkeys on focus change which works well, but window-level shortcuts would be architecturally cleaner
@@ -38,6 +37,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - WebView2 removal (stripped all WebView2 code from cef-wrapper.cpp)
 - Spout + D3D multi-window coexistence (both output modes run simultaneously, sharing D3D device)
 - CEF auto-upgrade (`--latest` / `--check-latest` flags in `setup-vendors.ts`, `bun run upgrade:cef` / `bun run check-updates` in `package.json`)
+- F12 DevTools — wired `webviewToggleDevTools` FFI export into `GlobalShortcut.register("F12")` in `index.ts`, bypassing the broken CEF key-event path
 - GitHub Releases (`scripts/release.ts` — tag, package, publish)
 - Strip Electrobun heritage code (WebView2 ~630 lines, WGPU shims ~295 lines, dead includes, orphaned headers)
 - Consolidated Debug Panel (merged `<slot-overlay>` into `<debug-panel>`, data-driven hotkeys, auto-injection, `window.__chromeyumm` state object)

@@ -74,6 +74,7 @@ const EXPECTED_SYMBOLS: Record<string, { args: number[]; returns: number }> = {
   setNextWebviewFlags: { args: [FFIType.bool, FFIType.bool], returns: FFIType.void },
   setNextWebviewSharedTexture: { args: [FFIType.bool], returns: FFIType.void },
   evaluateJavaScriptWithNoCompletion: { args: [FFIType.ptr, FFIType.cstring], returns: FFIType.void },
+  webviewToggleDevTools: { args: [FFIType.ptr], returns: FFIType.void },
 
   // D3D output
   startD3DOutput: { args: [FFIType.u32], returns: FFIType.bool },

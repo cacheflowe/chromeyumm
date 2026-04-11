@@ -406,6 +406,7 @@ function buildChromeyummState() {
     hotkeys.push({ key: "Ctrl+Shift+M", action: "reset windows" });
   }
   hotkeys.push({ key: "Ctrl+D", action: "toggle debug panel" });
+  hotkeys.push({ key: "F12", action: "toggle DevTools" });
   hotkeys.push({ key: "Escape", action: "quit" });
 
   return {
@@ -511,6 +512,11 @@ GlobalShortcut.register("CommandOrControl+F", () => {
 GlobalShortcut.register("CommandOrControl+D", () => {
   console.log("[chromeyumm] Ctrl+D: toggling debug panel");
   master.webview.executeJavascript(TOGGLE_PANEL_SCRIPT);
+});
+
+GlobalShortcut.register("F12", () => {
+  console.log("[chromeyumm] F12: toggling DevTools");
+  master.webview.toggleDevTools();
 });
 
 GlobalShortcut.register("Escape", () => {

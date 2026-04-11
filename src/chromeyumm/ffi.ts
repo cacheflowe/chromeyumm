@@ -103,6 +103,7 @@ export const native = (() => {
         args: [FFIType.ptr, FFIType.cstring],
         returns: FFIType.void,
       },
+      webviewToggleDevTools: { args: [FFIType.ptr], returns: FFIType.void },
 
       // ── D3D output ──────────────────────────────────────────────────────
       startD3DOutput: { args: [FFIType.u32], returns: FFIType.bool },
@@ -178,6 +179,8 @@ export function cs(s: string): Uint8Array {
 
 type EventHandler = (detail: string) => void;
 const webviewListeners = new Map<number, Map<string, EventHandler[]>>();
+type BridgeHandler = (message: string) => void;
+const bunBridgeListeners = new Map<number, BridgeHandler[]>();
 
 /** Register a per-webview event listener. Called by Webview.on(). */
 export function addWebviewListener(webviewId: number, event: string, handler: EventHandler) {
@@ -190,6 +193,17 @@ export function addWebviewListener(webviewId: number, event: string, handler: Ev
 function dispatchWebviewEvent(webviewId: number, eventName: string, detail: string) {
   const handlers = webviewListeners.get(webviewId)?.get(eventName);
   if (handlers) for (const h of handlers) h(detail);
+}
+
+/** Register a per-webview Bun bridge handler. Called by Webview.onBunBridgeMessage(). */
+export function addBunBridgeListener(webviewId: number, handler: BridgeHandler) {
+  if (!bunBridgeListeners.has(webviewId)) bunBridgeListeners.set(webviewId, []);
+  bunBridgeListeners.get(webviewId)!.push(handler);
+}
+
+function dispatchBunBridgeMessage(webviewId: number, message: string) {
+  const handlers = bunBridgeListeners.get(webviewId);
+  if (handlers) for (const handler of handlers) handler(message);
 }
 
 /** C++ WebviewEventHandler → TS (did-navigate, will-navigate, etc.) */
@@ -219,6 +233,19 @@ export const eventBridgeCallback = new JSCallback(
       }
     } catch (e) {
       console.error("[chromeyumm] eventBridgeCallback error:", e);
+    }
+  },
+  { args: [FFIType.u32, FFIType.cstring], returns: FFIType.void, threadsafe: true },
+);
+
+/** CEF → TS Bun bridge (page-to-host JSON/string messages for non-sandboxed webviews). */
+export const bunBridgeCallback = new JSCallback(
+  (webviewId: number, msg: number) => {
+    try {
+      const raw = new CString(msg as unknown as Pointer).toString();
+      dispatchBunBridgeMessage(webviewId, raw);
+    } catch (e) {
+      console.error("[chromeyumm] bunBridgeCallback error:", e);
     }
   },
   { args: [FFIType.u32, FFIType.cstring], returns: FFIType.void, threadsafe: true },

@@ -8,8 +8,10 @@ import {
   native,
   cs,
   addWebviewListener,
+  addBunBridgeListener,
   webviewEventCallback,
   eventBridgeCallback,
+  bunBridgeCallback,
   nullCallback,
   decideNavCallback,
 } from "./ffi.ts";
@@ -48,7 +50,7 @@ export class Webview {
       decideNavCallback,
       webviewEventCallback, // webviewEventHandler (did-navigate, will-navigate, etc.)
       eventBridgeCallback, // eventBridgeHandler
-      nullCallback, // bunBridgePostmessageHandler (no RPC)
+      bunBridgeCallback, // bunBridgePostmessageHandler
       nullCallback, // internalBridgeHandler (no RPC)
       cs(preload),
       cs(""), // customPreloadScript
@@ -64,7 +66,17 @@ export class Webview {
     }
   }
 
+  toggleDevTools() {
+    if (this.ptr) {
+      native.symbols.webviewToggleDevTools(this.ptr);
+    }
+  }
+
   on(event: string, handler: (detail: string) => void) {
     addWebviewListener(this.id, event, handler);
+  }
+
+  onBunBridgeMessage(handler: (message: string) => void) {
+    addBunBridgeListener(this.id, handler);
   }
 }

@@ -207,6 +207,7 @@ If `display-config.json` is absent, the app auto-detects connected displays and 
 | **Ctrl+R** | Reload content |
 | **Ctrl+F** | Toggle alwaysOnTop |
 | **Ctrl+D** | Toggle debug panel (pages must include debug-panel.js) |
+| **F12** | Toggle browser DevTools (undocked window) |
 | **Escape** | Quit cleanly |
 
 ---
