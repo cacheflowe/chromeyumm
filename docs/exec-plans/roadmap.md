@@ -11,15 +11,19 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 
 ## Backlog
 
+- Add simple system to pull latest Spout / CEF versions into codebase. This is already partially implemented in `scripts/setup-vendors.ts` but currently requires manual version updates and doesn't handle CEF wrapper rebuilds which are required for CEF version changes.
 - CI build pipeline (GitHub Actions, self-hosted runner for MSVC + CEF)
 - Crash/error logging to disk
-- Add automated system to pull latest Spout / CEF versions into codebase
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
 - Replace `RegisterHotKey` with window-level accelerators (`TranslateAccelerator` or `WM_KEYDOWN`) — current approach suspends/resumes hotkeys on focus change which works well, but window-level shortcuts would be architecturally cleaner
 
 ## Completed
 
-- Automated smoke test (`bun run test` / `bun scripts/smoke-test.ts`) — verifies DLL loads and all 34 FFI symbols resolve, cross-checks against dumpbin exports when available. Web feature detection page at `src/views/feature-check/index.html` covers WebGL/WebGPU, video codecs, hardware APIs (Serial, Bluetooth, USB, HID, MIDI, Gamepad), camera/mic enumeration, and Chromeyumm state.
+- Feature-check mode (`bun run feature-check` / `dist/chromeyumm.exe --feature-check`) — launches feature detection page in a 900×800 interactive window, bypassing display-config.json. Tests WebGL/WebGPU, video codecs (with MSE + canPlayType dual detection), hardware APIs, webcam selector with live preview, and Chromeyumm state.
+- Relative contentUrl resolution — paths like `src/views/feature-check/index.html` in display-config.json are auto-resolved to `file:///` URLs relative to cwd. Full URLs (`http://`, `file:///`) still work as before.
+- Video codec documentation — added codec support table and ffmpeg VP9 conversion guide to FRONTEND.md. CEF standard builds exclude H.264/AAC; use VP9/WebM for video content.
+- FFI DLL path resolution — `ffi.ts` now searches exe dir → `dist/` → cwd for `libNativeWrapper.dll`, fixing dev-mode runs.
+- Automated smoke test (`bun run test` / `bun scripts/smoke-test.ts`) — verifies DLL loads and all 34 FFI symbols resolve, cross-checks against dumpbin exports when available.
 - Permissive chromium flags — added `use-angle=d3d11`, `enable-gpu-rasterization`, `allow-file-access-from-files`, `allow-running-insecure-content`, `disable-site-isolation-trials`, `autoplay-policy=no-user-gesture-required`, `use-fake-ui-for-media-stream`, `enable-usermedia-screen-capturing`, `enable-experimental-web-platform-features`, `enable-webgpu-developer-features`. All overridable via `build.json` chromiumFlags.
 - NDW interactive input forwarding — `interactiveWindows: true` in display-config.json enables mouse event forwarding from borderless display windows to CEF (visitor-safe alternative to Ctrl+M interactive mode)
 - Hotkey suspend/resume hardening — removed flag-based early returns in `suspendHotkeys`/`resumeHotkeys`, resume now unconditionally unregisters+re-registers to clear stale OS state. Bun keepalive interval reduced from ~12 days to 250ms for reliable threadsafe callback delivery.

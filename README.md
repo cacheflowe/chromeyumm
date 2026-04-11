@@ -61,14 +61,14 @@ bun build.ts --skip-native
 # Development (no minification)
 bun build.ts --dev
 
-# Shortcut
-bun dev
+# CEF browser feature test
+bun run feature-check
 ```
 
 ### Run
 
 ```bash
-bun start
+bun run start
 ```
 
 Configure `display-config.json` in the project root (found via cwd walk-up at runtime).

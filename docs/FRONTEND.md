@@ -75,6 +75,44 @@ Reusable custom elements in `src/components/` — drop into any page loaded in C
 | `layout-params.js` | (utility) | Parses standard Chromeyumm URL parameters |
 | `inject.js` | (auto-injector) | Bundled into `dist/debug-inject.js`; auto-injects `<debug-panel>` on did-navigate |
 
+## Video Codec Support
+
+The CEF standard distribution from Spotify CDN does **not** include proprietary codec decoders (H.264/AVC, H.265/HEVC, AAC). These are excluded due to patent licensing. Supported codecs out of the box:
+
+| Codec | Container | Supported |
+|---|---|---|
+| VP8 | WebM | ✅ |
+| VP9 | WebM | ✅ |
+| AV1 | WebM / MP4 | ✅ |
+| Opus | WebM | ✅ |
+| Vorbis | WebM | ✅ |
+| H.264 (AVC) | MP4 | ❌ |
+| H.265 (HEVC) | MP4 | ❌ |
+| AAC | MP4 | ❌ |
+
+### Converting H.264 → VP9 with ffmpeg
+
+```bash
+# Single file — high quality, good compression
+ffmpeg -i input.mp4 -c:v libvpx-vp9 -crf 30 -b:v 0 -c:a libopus output.webm
+
+# Same but 2-pass for better quality at target bitrate (e.g. 4 Mbps)
+ffmpeg -i input.mp4 -c:v libvpx-vp9 -b:v 4M -pass 1 -an -f null NUL
+ffmpeg -i input.mp4 -c:v libvpx-vp9 -b:v 4M -pass 2 -c:a libopus output.webm
+
+# Lossless (large files, useful for installation source material)
+ffmpeg -i input.mp4 -c:v libvpx-vp9 -lossless 1 -c:a libopus output.webm
+
+# Batch convert all .mp4 in a folder (PowerShell)
+Get-ChildItem *.mp4 | ForEach-Object { ffmpeg -i $_.Name -c:v libvpx-vp9 -crf 30 -b:v 0 -c:a libopus "$($_.BaseName).webm" }
+```
+
+**Tips:**
+- `-crf 30` with `-b:v 0` = constant quality mode (lower CRF = higher quality, 15–35 is typical)
+- VP9 encoding is slow; add `-row-mt 1 -threads 4` to speed it up
+- For 4K installation content, `-crf 24 -row-mt 1` is a good starting point
+- Use `<video>` with `.webm` source in your views — it will Just Work™
+
 All components are framework-agnostic, use Shadow DOM, and require zero build tools. See [product-specs/web-components.md](product-specs/web-components.md) for full API docs.
 
 ## Injected Scripts

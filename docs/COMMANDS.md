@@ -18,6 +18,7 @@ All commands run from the project root unless noted.
 |---|---|
 | `bun start` | Run compiled exe from project root |
 | `dist/chromeyumm.exe` | Run compiled exe directly |
+| `bun run feature-check` | Launch feature detection page in a 900×800 interactive window (ignores display-config.json) |
 | `bun run demo` | Start R3F Vite dev server + chromeyumm browser together |
 
 ## Vendor Setup (first time / new machine)
@@ -49,10 +50,12 @@ bun install
 bun run build    # outputs to src/views/r3f/dist/
 ```
 
-## Debugging
+## Test / Diagnostics
 
 | Command | Description |
 |---|---|
+| `bun run test` | FFI smoke test — verify DLL loads and all symbols resolve |
+| `bun run feature-check` | Feature detection page — WebGL/WebGPU, codecs, hardware APIs, webcam test |
 | `dumpbin /exports dist/libNativeWrapper.dll` | Verify DLL export names |
 | Ctrl+D (at runtime) | Toggle debug panel (pages must include debug-panel.js) |
 

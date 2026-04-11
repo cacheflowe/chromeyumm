@@ -13,10 +13,12 @@ import { existsSync } from "fs";
 // ── DLL load ────────────────────────────────────────────────────────────────
 
 export const native = (() => {
-  // When running as a compiled exe, look next to the exe first; fall back to cwd
-  // (cwd works for `bun app.js` run from dist/).
+  // When running as a compiled exe, look next to the exe first; fall back to
+  // dist/ relative to cwd (for `bun src/app/index.ts`), then cwd itself.
   const nextToExe = join(dirname(process.execPath), "libNativeWrapper.dll");
-  const dllPath = existsSync(nextToExe) ? nextToExe : join(process.cwd(), "libNativeWrapper.dll");
+  const inDist = join(process.cwd(), "dist", "libNativeWrapper.dll");
+  const inCwd = join(process.cwd(), "libNativeWrapper.dll");
+  const dllPath = existsSync(nextToExe) ? nextToExe : existsSync(inDist) ? inDist : inCwd;
   try {
     return dlopen(dllPath, {
       // ── Window ──────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 import { BrowserWindow, NativeDisplayWindow, Screen, GlobalShortcut } from "chromeyumm";
-import { dirname, join, basename } from "path";
-import { readFileSync } from "fs";
+import { dirname, join, basename, isAbsolute, resolve } from "path";
+import { readFileSync, existsSync } from "fs";
 import { loadDisplayConfig, resolveVirtualCanvas } from "./config.ts";
 import { SpoutInput } from "./spout-input.ts";
 import { native, cs } from "../chromeyumm/ffi.ts";
@@ -66,7 +66,8 @@ let debugInjectScript = "";
 // Config / layout
 // ---------------------------------------------------------------------------
 
-const config = loadDisplayConfig();
+const featureCheckMode = process.argv.includes("--feature-check");
+const config = featureCheckMode ? null : loadDisplayConfig();
 
 interface DisplaySlot {
   slot: number;
@@ -88,10 +89,52 @@ let alwaysOnTop = false;
 let totalWidth: number;
 let totalHeight: number;
 
-if (config) {
+if (featureCheckMode) {
+  // --feature-check: single centered window, no Spout/D3D, feature-check page
+  const fcPath = resolve(process.cwd(), "src/views/feature-check/index.html");
+  if (!existsSync(fcPath)) {
+    console.error(`[chromeyumm] Feature check page not found: ${fcPath}`);
+    process.exit(1);
+  }
+  contentUrl = "file:///" + fcPath.replace(/\\/g, "/");
+  totalWidth = 900;
+  totalHeight = 800;
+  // Use CW_USEDEFAULT-style placement (top-left offset); Screen may not
+  // be available this early when running via `bun src/app/index.ts`.
+  const displays = Screen.getAllDisplays();
+  const primary = displays[0];
+  const cx = primary ? primary.bounds.x + Math.floor((primary.bounds.width - totalWidth) / 2) : 100;
+  const cy = primary ? primary.bounds.y + Math.floor((primary.bounds.height - totalHeight) / 2) : 100;
+  slots = [
+    {
+      slot: 0,
+      simulated: true,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: totalWidth,
+      sourceHeight: totalHeight,
+      windowX: cx,
+      windowY: cy,
+      windowW: totalWidth,
+      windowH: totalHeight,
+    },
+  ];
+  console.log("[chromeyumm] Feature check mode — single 900×800 window");
+} else if (config) {
   console.log(`[chromeyumm] Loaded display-config.json — ${config.windows.length} window(s).`);
 
   contentUrl = config.contentUrl ?? null;
+
+  // Resolve relative contentUrl paths to file:// URLs.
+  // e.g. "src/views/feature-check/index.html" → "file:///D:/workspace/chromeyumm/src/views/..."
+  if (contentUrl && !contentUrl.includes("://")) {
+    const abs = isAbsolute(contentUrl) ? contentUrl : resolve(process.cwd(), contentUrl);
+    if (existsSync(abs)) {
+      contentUrl = "file:///" + abs.replace(/\\/g, "/");
+    } else {
+      console.warn(`[chromeyumm] contentUrl path not found: ${abs}`);
+    }
+  }
   fullscreen = config.fullscreen ?? false;
   alwaysOnTop = config.alwaysOnTop ?? false;
 
@@ -254,7 +297,7 @@ const masterX = Math.min(...slots.map((s) => s.windowX));
 const masterY = Math.min(...slots.map((s) => s.windowY));
 
 const master = new BrowserWindow({
-  title: "chromeyumm",
+  title: featureCheckMode ? "Chromeyumm Feature Check" : "chromeyumm",
   url: masterUrl,
   spout: true, // always OSR — Spout mode sends to SpoutDX; D3D output blits to NDWs
   frame: { x: masterX, y: masterY, width: totalWidth, height: totalHeight },
@@ -404,7 +447,7 @@ function buildChromeyummState() {
 // Interactive mode
 // ---------------------------------------------------------------------------
 
-let interactiveMode = config?.startInteractive ?? false;
+let interactiveMode = featureCheckMode || (config?.startInteractive ?? false);
 
 if (useD3DOutput) {
   if (interactiveMode) {

@@ -1039,31 +1039,11 @@ public:
             return true;
         }
         
-        // No cached permission, show dialog
-        printf("CEF: No cached permission found for %s, showing dialog\n", origin.c_str());
-        
-        // Show Windows message box
-        std::string message = "This page wants to access your camera and/or microphone.\n\nDo you want to allow this?";
-        std::string title = "Camera & Microphone Access";
-        
-        int result = MessageBoxA(
-            nullptr,
-            message.c_str(),
-            title.c_str(),
-            MB_YESNO | MB_ICONQUESTION | MB_TOPMOST
-        );
-        
-        // Handle response and cache the decision
-        if (result == IDYES) {
-            callback->Continue(requested_permissions); // Allow all requested permissions
-            cachePermission(origin, PermissionType::USER_MEDIA, PermissionStatus::ALLOWED);
-            printf("CEF: User allowed media access for %s (cached)\n", origin.c_str());
-        } else {
-            callback->Cancel();
-            cachePermission(origin, PermissionType::USER_MEDIA, PermissionStatus::DENIED);
-            printf("CEF: User blocked media access for %s (cached)\n", origin.c_str());
-        }
-        
+        // Auto-grant media access (kiosk/installation — no user prompt needed)
+        printf("CEF: Auto-granting media access for %s\n", origin.c_str());
+        callback->Continue(requested_permissions);
+        cachePermission(origin, PermissionType::USER_MEDIA, PermissionStatus::ALLOWED);
+
         return true; // We handled the permission request
     }
     
@@ -1111,28 +1091,11 @@ public:
             return true;
         }
         
-        // No cached permission, show dialog
-        printf("CEF: No cached permission found for %s, showing dialog\n", origin.c_str());
-        
-        // Show Windows message box
-        int result = MessageBoxA(
-            nullptr,
-            message.c_str(),
-            title.c_str(),
-            MB_YESNO | MB_ICONQUESTION | MB_TOPMOST
-        );
-        
-        // Handle response and cache the decision
-        if (result == IDYES) {
-            callback->Continue(CEF_PERMISSION_RESULT_ACCEPT);
-            cachePermission(origin, permType, PermissionStatus::ALLOWED);
-            printf("CEF: User allowed %s for %s (cached)\n", title.c_str(), origin.c_str());
-        } else {
-            callback->Continue(CEF_PERMISSION_RESULT_DENY);
-            cachePermission(origin, permType, PermissionStatus::DENIED);
-            printf("CEF: User blocked %s for %s (cached)\n", title.c_str(), origin.c_str());
-        }
-        
+        // Auto-grant (kiosk/installation — no user prompt needed)
+        printf("CEF: Auto-granting %s for %s\n", title.c_str(), origin.c_str());
+        callback->Continue(CEF_PERMISSION_RESULT_ACCEPT);
+        cachePermission(origin, permType, PermissionStatus::ALLOWED);
+
         return true; // We handled the permission request
     }
     

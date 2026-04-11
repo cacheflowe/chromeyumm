@@ -21,10 +21,20 @@ const EXPECTED_SYMBOLS: Record<string, { args: number[]; returns: number }> = {
   getWindowStyle: { args: new Array(12).fill(FFIType.bool), returns: FFIType.u32 },
   createWindowWithFrameAndStyleFromWorker: {
     args: [
-      FFIType.u32, FFIType.f64, FFIType.f64, FFIType.f64, FFIType.f64,
-      FFIType.u32, FFIType.cstring, FFIType.bool,
-      FFIType.function, FFIType.function, FFIType.function,
-      FFIType.function, FFIType.function, FFIType.function,
+      FFIType.u32,
+      FFIType.f64,
+      FFIType.f64,
+      FFIType.f64,
+      FFIType.f64,
+      FFIType.u32,
+      FFIType.cstring,
+      FFIType.bool,
+      FFIType.function,
+      FFIType.function,
+      FFIType.function,
+      FFIType.function,
+      FFIType.function,
+      FFIType.function,
     ],
     returns: FFIType.ptr,
   },
@@ -38,13 +48,26 @@ const EXPECTED_SYMBOLS: Record<string, { args: number[]; returns: number }> = {
   // Webview
   initWebview: {
     args: [
-      FFIType.u32, FFIType.ptr, FFIType.cstring, FFIType.cstring,
-      FFIType.f64, FFIType.f64, FFIType.f64, FFIType.f64,
-      FFIType.bool, FFIType.cstring,
-      FFIType.function, FFIType.function, FFIType.function,
-      FFIType.function, FFIType.function,
-      FFIType.cstring, FFIType.cstring, FFIType.cstring,
-      FFIType.bool, FFIType.bool,
+      FFIType.u32,
+      FFIType.ptr,
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.f64,
+      FFIType.f64,
+      FFIType.f64,
+      FFIType.f64,
+      FFIType.bool,
+      FFIType.cstring,
+      FFIType.function,
+      FFIType.function,
+      FFIType.function,
+      FFIType.function,
+      FFIType.function,
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.cstring,
+      FFIType.bool,
+      FFIType.bool,
     ],
     returns: FFIType.ptr,
   },
@@ -98,8 +121,9 @@ const EXPECTED_SYMBOLS: Record<string, { args: number[]; returns: number }> = {
 };
 
 // ── Locate DLL ──────────────────────────────────────────────────────────────
-const dllArg = process.argv.find((a) => a.startsWith("--dll="))?.split("=")[1]
-  ?? (process.argv.indexOf("--dll") >= 0 ? process.argv[process.argv.indexOf("--dll") + 1] : undefined);
+const dllArg =
+  process.argv.find((a) => a.startsWith("--dll="))?.split("=")[1] ??
+  (process.argv.indexOf("--dll") >= 0 ? process.argv[process.argv.indexOf("--dll") + 1] : undefined);
 
 const candidates = dllArg
   ? [dllArg]
@@ -118,8 +142,14 @@ if (!dllPath) {
 let pass = 0;
 let fail = 0;
 
-function ok(msg: string) { pass++; console.log(`  ✓ ${msg}`); }
-function bad(msg: string) { fail++; console.error(`  ✗ ${msg}`); }
+function ok(msg: string) {
+  pass++;
+  console.log(`  ✓ ${msg}`);
+}
+function bad(msg: string) {
+  fail++;
+  console.error(`  ✗ ${msg}`);
+}
 
 console.log(`\nSmoke test — ${dllPath}\n`);
 console.log("── DLL load ──");
