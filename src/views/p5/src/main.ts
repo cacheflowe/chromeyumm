@@ -26,6 +26,15 @@ new p5((p: p5) => {
   const shapes: Matter.Body[] = [];
   let lastSpawn = 0;
 
+  function reset() {
+    // Remove all dynamic bodies
+    for (const body of shapes) {
+      Composite.remove(engine.world, body);
+    }
+    shapes.length = 0;
+    lastSpawn = 0;
+  }
+
   // Scale factor — everything sizes relative to the smaller canvas dimension.
   // At 384px this is ~1.0; at 32px shapes shrink proportionally.
   let unit = 1;
@@ -97,6 +106,10 @@ new p5((p: p5) => {
   };
 
   // ----- interaction ---------------------------------------------------------
+
+  p.keyPressed = () => {
+    if (p.key === "r" || p.key === "R") reset();
+  };
 
   p.mousePressed = () => {
     const spread = 50 * unit;
