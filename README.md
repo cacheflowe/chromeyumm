@@ -39,39 +39,89 @@ See `DEVELOPMENT.md` for full architecture details, GPU findings, and performanc
 
 ## Quick Start
 
-### Prerequisites
+**Prerequisites:** Windows 10/11 x64 · [Bun](https://bun.sh) · Visual Studio 2022 (MSVC C++ Desktop workload) · CMake
 
-- Windows 10/11 x64
-- [Bun](https://bun.sh) runtime
-- Visual Studio 2022 with MSVC (C++ Desktop workload)
-- CEF prebuilt vendor (see `native/README.md`)
-- Spout vendor (optional, for Spout output — see `native/README.md`)
+```bash
+git clone <repo> && cd chromeyumm
+bun install
+bun scripts/setup-vendors.ts   # download CEF + Spout, build libcef_dll_wrapper (~5 min, ~1.5 GB)
+bun build.ts                   # compile DLL + bundle TS + copy CEF runtime → dist/
+dist/chromeyumm.exe            # run (configure display-config.json first)
+```
+
+---
+
+## Commands
 
 ### Build
 
-```bash
-bun install
+| Command | Description |
+|---|---|
+| `bun run build` | Full rebuild: compile C++ DLL + bundle TS + copy CEF runtime to `dist/` |
+| `bun run build:dev` | Same, unminified with inline sourcemaps |
+| `bun run build:ts` | TS bundle only — no C++ compile. Fast for TS-only changes |
 
-# Full build — compiles C++ DLL + bundles TypeScript + copies CEF runtime
-bun build.ts
+**What requires which build:**
 
-# TypeScript only (no C++ compile) — fast, for TS-only changes
-bun build.ts --skip-native
-
-# Development (no minification)
-bun build.ts --dev
-
-# CEF browser feature test
-bun run feature-check
-```
+| Changed | Command needed |
+|---|---|
+| `native/cef-wrapper.cpp` or `cef-helper.cpp` | `bun run build` |
+| Anything in `src/` | `bun run build:ts` |
+| `display-config.json` only | None — found at runtime via cwd walk-up |
+| `src/views/r3f/` source | `cd src/views/r3f && bun run build` (served via dev server) |
 
 ### Run
 
+| Command | Description |
+|---|---|
+| `bun run start` | Run `dist/chromeyumm.exe` |
+| `bun run feature-check` | Feature detection page — WebGL, codecs, hardware APIs, CEF version |
+| `bun run demo` | Start R3F Vite dev server + chromeyumm browser together |
+
+### Test & Diagnostics
+
+| Command | Description |
+|---|---|
+| `bun run test` | FFI smoke test — verify DLL loads and all exported symbols resolve |
+| `dumpbin /exports dist/libNativeWrapper.dll` | Inspect DLL export names directly |
+
+### Vendor Setup (first time or new machine)
+
 ```bash
-bun run start
+bun scripts/setup-vendors.ts                          # download + build CEF + Spout
+bun scripts/setup-vendors.ts --cef-only               # CEF only
+bun scripts/setup-vendors.ts --spout-only             # Spout only
+bun scripts/setup-vendors.ts --cef-version "VERSION"  # specific CEF version
+bun scripts/setup-vendors.ts --spout-tag "TAG"        # specific Spout tag
+bun scripts/setup-vendors.ts --cef-archive file.tar.bz2  # use a local archive
 ```
 
-Configure `display-config.json` in the project root (found via cwd walk-up at runtime).
+### CEF / Chromium Upgrades
+
+```bash
+bun run check-updates    # report whether a newer stable CEF build is available
+bun run upgrade:cef      # auto-fetch latest CEF, download, build wrapper, rebuild app
+```
+
+`upgrade:cef` auto-updates `DEFAULT_CEF_VERSION` in `scripts/setup-vendors.ts` so the version bump appears cleanly in the next commit. After upgrading: run `bun run test`, do a manual smoke test, then release.
+
+See `docs/references/vendor-management.md` for the full procedure and API compatibility notes.
+
+### Release
+
+| Command | Description |
+|---|---|
+| `bun run release` | Build + package `release/chromeyumm-v{VERSION}-win-x64.zip` |
+| `bun run release:publish` | **One-command release**: auto-bump patch, build, package, generate release notes, git tag + push, create GitHub release |
+| `bun scripts/release.ts --bump patch` | Bump patch, build, package (no publish) |
+| `bun scripts/release.ts --bump minor` | Bump minor, build, package (no publish) |
+| `bun scripts/release.ts --bump major` | Bump major, build, package (no publish) |
+| `bun scripts/release.ts --publish --bump minor` | Publish with minor bump instead of patch |
+| `bun scripts/release.ts --skip-build` | Package existing `dist/` without rebuilding |
+
+`--publish` requires the [GitHub CLI](https://cli.github.com/) (`gh`). Release notes are auto-generated from git commits since the last tag.
+
+Pushing a `v*` tag also triggers `.github/workflows/release.yml` (CI build + release) automatically.
 
 ---
 
@@ -161,10 +211,3 @@ If `display-config.json` is absent, the app auto-detects connected displays and 
 
 ---
 
-## CEF Version Upgrades
-
-1. Download a new CEF prebuilt from [cef-builds.spotifycdn.com](https://cef-builds.spotifycdn.com/index.html) (Windows 64-bit, Standard Distribution)
-2. Replace `native/vendor/cef/`
-3. Rebuild `libcef_dll_wrapper.lib` (CMake — see `native/README.md`)
-4. Run `bun build.ts`
-5. The CEF C++ API (`OnAcceleratedPaint`, `CefBrowserSettings`, etc.) is very stable; breaking changes are rare
