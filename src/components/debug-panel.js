@@ -22,8 +22,8 @@
  *                      spout-disconnect events from any <spout-receiver> on
  *                      the page for live fps and dimension stats.
  *
- *   Perf section     — stats.js FPS / MS / MB graphs. Hidden until the first
- *                      stats.begin() call.
+ *   Perf section     — FPS, frame-time (ms), and a sparkline of recent frame
+ *                      times. Hidden until the first stats.begin() call.
  *
  *   Slot overlay     — coordinate grid + per-slot boundary boxes, rendered
  *                      full-viewport when the panel is open and slot data
@@ -47,15 +47,13 @@
  *   function animate() {
  *     stats.begin();
  *     renderer.render(scene, camera);
- *     stats.end();
+ *     const now = stats.end(); // returns performance.now()
  *   }
  *
  *   // Keys, display, output, and spout sections are populated automatically
  *   // from window.__chromeyumm — do not pass them.
  *   // Use <br> in content strings to produce multiple bullet points.
  */
-
-import Stats from "stats.js";
 
 const SLOT_COLORS = ["#00ffff", "#ffff00", "#ff00ff", "#00ff88", "#ff8800"];
 const GRID_PX = 100;
@@ -64,10 +62,33 @@ export class DebugPanel extends HTMLElement {
   // ── Instance state ────────────────────────────────────────────────────────
 
   #content = null; // text-sections div — innerHTML rebuilt on each redraw
-  #statsSection = null; // persistent stats.js container
-  #stats = null; // wrapped stats object exposed via getter
-  #statsUsed = false; // true after first stats.begin()
   #overlay = null; // full-viewport slot overlay container
+
+  // rAF-based FPS counter — always running, measures actual page frame rate
+  #rafId = 0;
+  #rafCount = 0;
+  #rafLastTime = 0;
+  #rafFps = 0;
+  #rafMs = 0;
+  #rafTick = (now) => {
+    this.#rafCount++;
+    const delta = now - this.#rafLastTime;
+    if (delta >= 500) { // update twice per second for responsiveness
+      this.#rafFps = Math.round((this.#rafCount * 1000) / delta);
+      this.#rafMs = delta / this.#rafCount;
+      this.#rafCount = 0;
+      this.#rafLastTime = now;
+    }
+    this.#rafId = requestAnimationFrame(this.#rafTick);
+  };
+
+  // stats.begin()/end() instrumentation — render-loop sparkline only
+  static #PERF_HISTORY = 60;
+  #perfObj = null;
+  #perfUsed = false;
+  #perfBegin = 0;
+  #perfFrames = []; // ms per render call, max PERF_HISTORY entries
+
   #onOpen = null;
   #intervalId = 0;
 
@@ -164,24 +185,19 @@ export class DebugPanel extends HTMLElement {
     this.#content = document.createElement("div");
     panelEl.appendChild(this.#content);
 
-    // Stats.js perf graphs — persistent DOM node, never wiped by innerHTML
-    const rawStats = new Stats();
-    Object.assign(rawStats.dom.style, {
-      position: "static",
-      display: "flex",
-      cursor: "default",
-      opacity: "1",
-      zIndex: "auto",
-    });
-    this.#statsSection = document.createElement("div");
-    this.#statsSection.className = "s";
-    this.#statsSection.style.display = "none";
-    const perfLbl = document.createElement("div");
-    perfLbl.className = "lbl";
-    perfLbl.textContent = "perf";
-    this.#statsSection.appendChild(perfLbl);
-    this.#statsSection.appendChild(rawStats.dom);
-    panelEl.appendChild(this.#statsSection);
+    // Frame timing tracker — exposed via panel.stats; renders inline in #redraw()
+    this.#perfObj = {
+      begin: () => {
+        this.#perfUsed = true;
+        this.#perfBegin = performance.now();
+      },
+      end: () => {
+        const now = performance.now();
+        this.#perfFrames.push(now - this.#perfBegin);
+        if (this.#perfFrames.length > DebugPanel.#PERF_HISTORY) this.#perfFrames.shift();
+        return now;
+      },
+    };
 
     // Slot overlay container — full viewport, rebuilt on each redraw
     this.#overlay = document.createElement("div");
@@ -190,15 +206,6 @@ export class DebugPanel extends HTMLElement {
     shadow.appendChild(style);
     shadow.appendChild(panelEl);
     shadow.appendChild(this.#overlay);
-
-    // Wrap begin/end so that first call flips #statsUsed and shows the section
-    this.#stats = {
-      begin: () => {
-        this.#statsUsed = true;
-        rawStats.begin();
-      },
-      end: () => rawStats.end(),
-    };
 
     // Catch bubbled events from any <spout-receiver> on the page
     document.addEventListener("spout-connect", this.#onSpoutConnect);
@@ -216,16 +223,21 @@ export class DebugPanel extends HTMLElement {
       }
     };
 
-    // Recompute fps counter once per second and redraw if open
+    // Recompute spout fps + redraw once per second
     this.#intervalId = setInterval(() => {
       this.#spoutFPS = this.#spoutFrameCount - this.#spoutLastFPSCount;
       this.#spoutLastFPSCount = this.#spoutFrameCount;
       if (this.hasAttribute("open")) this.#redraw();
     }, 1000);
+
+    // Start always-on rAF FPS counter
+    this.#rafLastTime = performance.now();
+    this.#rafId = requestAnimationFrame(this.#rafTick);
   }
 
   disconnectedCallback() {
     clearInterval(this.#intervalId);
+    cancelAnimationFrame(this.#rafId);
     document.removeEventListener("spout-connect", this.#onSpoutConnect);
     document.removeEventListener("spout-frame", this.#onSpoutFrame);
     document.removeEventListener("spout-disconnect", this.#onSpoutDisconnect);
@@ -244,12 +256,13 @@ export class DebugPanel extends HTMLElement {
   }
 
   /**
-   * Stats.js instance (begin/end wrapped). Call begin() + end() around each
-   * render to populate the FPS / MS / MB graphs. The perf section is hidden
-   * until the first begin() call, so views without a render loop stay clean.
+   * Render-loop instrumentation. Call begin() before and end() after each render.
+   * end() returns performance.now() for reuse as a timestamp.
+   * Adds a frame-time sparkline to the perf section (which is always visible via
+   * the panel's own rAF counter, regardless of whether stats is used).
    */
   get stats() {
-    return this.#stats;
+    return this.#perfObj;
   }
 
   /**
@@ -350,6 +363,43 @@ export class DebugPanel extends HTMLElement {
     }
 
     return "<ul>" + items.map((i) => `<li>${i}</li>`).join("") + "</ul>";
+  }
+
+  // ── Perf section (frame timing) ──────────────────────────────────────────
+
+  #buildPerfHTML() {
+    const fps = this.#rafFps;
+    const ms = this.#rafMs.toFixed(1);
+
+    // Render-loop sparkline — only when stats.begin()/end() is in use
+    let spark = "";
+    if (this.#perfUsed && this.#perfFrames.length > 1) {
+      const BARS = "▁▂▃▄▅▆▇█";
+      const frames = this.#perfFrames;
+      const min = Math.min(...frames);
+      const max = Math.max(...frames);
+      const range = max - min || 1;
+      spark =
+        " " +
+        frames
+          .map((t) => BARS[Math.min(7, Math.floor(((t - min) / range) * 8))])
+          .join("");
+    }
+
+    return `<ul><li>${fps} fps · ${ms} ms${spark ? `<span style="opacity:0.45;letter-spacing:0.05em">${spark}</span>` : ""}</li></ul>`;
+  }
+
+  // ── Memory section ───────────────────────────────────────────────────────
+
+  #buildMemHTML() {
+    const mem = performance.memory;
+    if (!mem) return null;
+    const mb = (b) => (b / 1048576).toFixed(1) + " MB";
+    const used = mem.usedJSHeapSize;
+    const total = mem.totalJSHeapSize;
+    const limit = mem.jsHeapSizeLimit;
+    const pct = ((used / limit) * 100).toFixed(0);
+    return `<ul><li>${mb(used)} used · ${mb(total)} alloc · ${mb(limit)} limit (${pct}%)</li></ul>`;
   }
 
   // ── Spout input section ───────────────────────────────────────────────────
@@ -510,11 +560,12 @@ export class DebugPanel extends HTMLElement {
     if (s.canvas != null) html += DebugPanel.#section("canvas", s.canvas);
     if (s.mouse != null) html += DebugPanel.#section("mouse", s.mouse);
     if (spoutInput != null) html += `<div class="s"><div class="lbl">spout input</div>${spoutInput}</div>`;
+    const perf = this.#buildPerfHTML();
+    if (perf != null) html += `<div class="s"><div class="lbl">perf</div>${perf}</div>`;
+    const mem = this.#buildMemHTML();
+    if (mem != null) html += `<div class="s"><div class="lbl">mem</div>${mem}</div>`;
 
     this.#content.innerHTML = html;
-
-    // Show perf graphs only after the view has started calling begin()/end()
-    this.#statsSection.style.display = this.#statsUsed ? "" : "none";
 
     // Rebuild slot overlay
     this.#buildOverlay();

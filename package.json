@@ -11,16 +11,16 @@
     "feature-check": "dist/chromeyumm.exe --feature-check",
     "demo": "bun scripts/r3f.ts",
     "release": "bun scripts/release.ts",
-    "release:publish": "bun scripts/release.ts --publish"
+    "release:publish": "bun scripts/release.ts --publish",
+    "upgrade:cef": "bun scripts/setup-vendors.ts --cef-only --latest && bun build.ts",
+    "check-updates": "bun scripts/setup-vendors.ts --check-latest"
   },
   "dependencies": {
     "@types/three": "^0.183.1",
-    "stats.js": "^0.17.0",
     "three": "^0.183.2"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/stats.js": "^0.17.4",
     "typescript": "^5.9.3"
   }
 }

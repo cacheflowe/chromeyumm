@@ -1,5 +1,22 @@
 # Vendor Management
 
+## Upgrading to a New Chromium Release (TL;DR)
+
+```bash
+bun run check-updates      # see if a newer CEF is available
+
+bun run upgrade:cef        # auto-fetch latest, download (~1.5 GB), build wrapper, rebuild app
+bun run test               # FFI smoke test
+dist/chromeyumm.exe        # manual smoke test
+
+bun scripts/release.ts --bump patch --publish   # tag + GitHub release
+```
+
+`upgrade:cef` automatically updates `DEFAULT_CEF_VERSION` in `setup-vendors.ts` so the
+version bump appears cleanly in the next commit.
+
+---
+
 Long-term strategy for managing CEF and Spout2 vendor dependencies.
 
 ## Overview
@@ -36,11 +53,11 @@ Cached archives are kept in `_vendor_tmp/` for re-runs (gitignored by the `_vend
 Versions are pinned as defaults in `scripts/setup-vendors.ts`:
 
 ```ts
-const DEFAULT_CEF_VERSION = "145.0.23+g3e7fe1c+chromium-145.0.7632.68";
+const DEFAULT_CEF_VERSION = "146.0.10+g8219561+chromium-146.0.7680.179";
 const DEFAULT_SPOUT_TAG   = "2.007.014";
 ```
 
-When upgrading, update these defaults so future clones get the correct version.
+When using `--latest`, the script updates `DEFAULT_CEF_VERSION` in place automatically.
 The `--cef-version` and `--spout-tag` CLI flags allow one-off overrides for testing.
 
 After setup, each vendor dir contains a version marker file that records what was installed:
@@ -49,37 +66,48 @@ After setup, each vendor dir contains a version marker file that records what wa
 
 ## CEF Upgrade Procedure
 
+See the TL;DR at the top for the one-command path. Manual steps below if needed.
+
 1. **Check for new releases**: https://cef-builds.spotifycdn.com/index.html
    - Look at `Windows 64-bit` → `Standard Distribution`
    - CEF tracks Chrome stable — a new build appears every few weeks
+   - Or: `bun run check-updates` to compare against your current default
 
-2. **Run the setup script with the new version**:
+2. **Run the upgrade** (auto-detects latest, downloads, builds wrapper, rebuilds app):
+   ```bash
+   bun run upgrade:cef
+   ```
+   Or manually with a specific version:
    ```bash
    bun scripts/setup-vendors.ts --cef-only --cef-version "NEW_VERSION_STRING"
-   ```
-
-3. **Build and test**:
-   ```bash
    bun build.ts
-   dist/chromeyumm.exe
    ```
 
-4. **Check for API breakage**:
-   - The CEF C++ API is very stable. Breaking changes are rare.
-   - Key API surface we use: `OnAcceleratedPaint`, `CefBrowserHost::CreateBrowser`,
-     `CefBrowserSettings`, `CefCommandLine`, `CefV8Handler`
-   - Changelog: https://bitbucket.org/chromiumembedded/cef/wiki/Home
-   - If the wrapper DLL fails to compile, check `cef-wrapper.cpp` for deprecated APIs
-
-5. **Update the default in `scripts/setup-vendors.ts`** and commit
-
-6. **What to test after upgrade**:
+3. **Test**:
+   ```bash
+   bun run test        # FFI smoke test
+   dist/chromeyumm.exe # manual smoke test
+   ```
+   What to verify:
    - Multi-window rendering (D3D11 blit pipeline)
    - Offscreen rendering with shared textures
    - Spout output (if enabled)
    - DevTools (Ctrl+Shift+I)
    - JavaScript execution / V8 bindings
    - GPU process stability (check for black windows)
+
+4. **Check for API breakage** (rare — CEF's C++ API is very stable):
+   - Key API surface: `OnAcceleratedPaint`, `CefBrowserHost::CreateBrowser`,
+     `CefBrowserSettings`, `CefCommandLine`, `CefV8Handler`
+   - Changelog: https://bitbucket.org/chromiumembedded/cef/wiki/Home
+   - If the wrapper DLL fails to compile, check `cef-wrapper.cpp` for deprecated APIs
+
+5. **Commit and release**:
+   ```bash
+   git add scripts/setup-vendors.ts  # DEFAULT_CEF_VERSION was auto-updated by --latest
+   git commit -m "Upgrade CEF to X.Y.Z (Chromium A.B.C)"
+   bun scripts/release.ts --bump patch --publish
+   ```
 
 See also: [docs/references/cef-upgrade.md](cef-upgrade.md) for CEF API surface details.
 

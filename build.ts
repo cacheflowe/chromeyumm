@@ -187,7 +187,7 @@ async function bundleTs() {
   console.log(`✓ Bundle: ${join(DIST_DIR, "app.js")}`);
 
   // Bundle debug-inject.js — auto-injects <debug-panel> into any page.
-  // This is a browser-target bundle (debug-panel.js + stats.js inlined)
+  // This is a browser-target bundle (debug-panel.js inlined)
   // that the app evaluates via executeJavascript on dom-ready.
   const injectResult = await Bun.build({
     entrypoints: [join(ROOT, "src", "components", "inject.js")],

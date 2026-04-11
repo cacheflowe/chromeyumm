@@ -58,7 +58,7 @@
         color: #fff;
         margin-left: auto;
         text-align: right;
-        max-width: 50%;
+        max-width: 60%;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -166,6 +166,47 @@
       row(apis, "Storage (IndexedDB)", !!window.indexedDB);
       row(apis, "Storage (localStorage)", !!window.localStorage);
 
+      // ── Screen ──
+      const scr = group("Screen");
+      row(scr, "Resolution", true, `${screen.width}×${screen.height}`);
+      row(scr, "devicePixelRatio", true, String(window.devicePixelRatio));
+      row(scr, "Color Depth", true, `${screen.colorDepth}-bit`);
+
+      // ── WebGL Limits ──
+      const limits = group("WebGL Limits");
+      {
+        const gl = document.createElement("canvas").getContext("webgl2") || document.createElement("canvas").getContext("webgl");
+        if (gl) {
+          const lim = (param) => gl.getParameter(param);
+          row(limits, "MAX_TEXTURE_SIZE", true, String(lim(gl.MAX_TEXTURE_SIZE)));
+          row(limits, "MAX_RENDERBUFFER_SIZE", true, String(lim(gl.MAX_RENDERBUFFER_SIZE)));
+          row(limits, "MAX_VIEWPORT_DIMS", true, lim(gl.MAX_VIEWPORT_DIMS)?.join("×") ?? "n/a");
+          // WebGL2-only limits
+          if (gl instanceof WebGL2RenderingContext) {
+            row(limits, "MAX_3D_TEXTURE_SIZE", true, String(lim(gl.MAX_3D_TEXTURE_SIZE)));
+            row(limits, "MAX_ARRAY_TEXTURE_LAYERS", true, String(lim(gl.MAX_ARRAY_TEXTURE_LAYERS)));
+          }
+          row(limits, "MAX_TEXTURE_IMAGE_UNITS", true, String(lim(gl.MAX_TEXTURE_IMAGE_UNITS)));
+          row(limits, "MAX_VERTEX_ATTRIBS", true, String(lim(gl.MAX_VERTEX_ATTRIBS)));
+        } else {
+          row(limits, "WebGL", false, "not available");
+        }
+      }
+
+      // ── WebGL Extensions ──
+      const exts = group("WebGL Extensions (key)");
+      {
+        const gl = document.createElement("canvas").getContext("webgl2") || document.createElement("canvas").getContext("webgl");
+        const ext = (name) => !!gl?.getExtension(name);
+        row(exts, "EXT_color_buffer_float", ext("EXT_color_buffer_float"));
+        row(exts, "OES_texture_float_linear", ext("OES_texture_float_linear"));
+        row(exts, "EXT_float_blend", ext("EXT_float_blend"));
+        row(exts, "EXT_texture_filter_anisotropic", ext("EXT_texture_filter_anisotropic"));
+        row(exts, "KHR_parallel_shader_compile", ext("KHR_parallel_shader_compile"));
+        row(exts, "WEBGL_compressed_texture_s3tc", ext("WEBGL_compressed_texture_s3tc"));
+        row(exts, "EXT_disjoint_timer_query_webgl2", ext("EXT_disjoint_timer_query_webgl2"), ext("EXT_disjoint_timer_query_webgl2") ? "available" : "disabled (fingerprinting)");
+      }
+
       // ── Performance ──
       const perf = group("Performance");
       row(perf, "Hardware Concurrency", true, String(navigator.hardwareConcurrency));
@@ -175,12 +216,31 @@
         !!navigator.deviceMemory,
         navigator.deviceMemory ? navigator.deviceMemory + " GB" : "n/a",
       );
-      row(perf, "User Agent", true, navigator.userAgent.split(" ").pop());
+      {
+        const mem = performance.memory;
+        if (mem) {
+          const mb = (b) => (b / 1048576).toFixed(0) + " MB";
+          row(perf, "JS Heap Used", true, `${mb(mem.usedJSHeapSize)} / ${mb(mem.jsHeapSizeLimit)}`);
+        }
+      }
+      {
+        const quota = await navigator.storage?.estimate().catch(() => null);
+        if (quota) {
+          const mb = (b) => ((b ?? 0) / 1048576).toFixed(0) + " MB";
+          row(perf, "Storage Quota", true, `${mb(quota.usage)} used / ${mb(quota.quota)} avail`);
+        }
+      }
+      {
+        const chromeMatch = navigator.userAgent.match(/Chrome\/([\d.]+)/);
+        row(perf, "Chromium", !!chromeMatch, chromeMatch ? chromeMatch[1] : "unknown");
+      }
+      row(perf, "User Agent", true, navigator.userAgent);
 
       // ── Chromeyumm-specific ──
       const cy = group("Chromeyumm");
       row(cy, "window.__chromeyumm", !!window.__chromeyumm);
       if (window.__chromeyumm) {
+        row(cy, "  cefVersion", null, window.__chromeyumm.cefVersion ?? "unknown");
         row(cy, "  interactiveMode", null, String(window.__chromeyumm.interactiveMode));
         row(cy, "  alwaysOnTop", null, String(window.__chromeyumm.alwaysOnTop));
         if (window.__chromeyumm.display) {

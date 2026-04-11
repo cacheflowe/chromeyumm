@@ -10,15 +10,16 @@
 Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).exe` and friends to `helperNames` in `src/app/index.ts` for the GPU-preference registry writes. Currently only `chromeyumm.exe` and `chromeyumm Helper.exe` are registered.
 
 ## Backlog
-
-- Add simple system to pull latest Spout / CEF versions into codebase. This is already partially implemented in `scripts/setup-vendors.ts` but currently requires manual version updates and doesn't handle CEF wrapper rebuilds which are required for CEF version changes.
-- CI build pipeline (GitHub Actions, self-hosted runner for MSVC + CEF)
+- ~~CI build pipeline~~ → moved to Completed
+- DDP output to FPP from p5 example? 
+- f12 key no longer working in CEF DevTools — investigate and re-enable
 - Crash/error logging to disk
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
 - Replace `RegisterHotKey` with window-level accelerators (`TranslateAccelerator` or `WM_KEYDOWN`) — current approach suspends/resumes hotkeys on focus change which works well, but window-level shortcuts would be architecturally cleaner
 
 ## Completed
 
+- CI build + release pipeline — GitHub Actions workflow (`.github/workflows/release.yml`) triggers on `v*` tag push or manual dispatch. Caches ~1.5 GB CEF vendors, runs full MSVC build, packages zip, creates GitHub release with auto-generated notes from git log. Local one-command release via `bun run release:publish` (auto-bumps patch, builds, packages, tags, pushes, publishes with changelog).
 - Feature-check mode (`bun run feature-check` / `dist/chromeyumm.exe --feature-check`) — launches feature detection page in a 900×800 interactive window, bypassing display-config.json. Tests WebGL/WebGPU, video codecs (with MSE + canPlayType dual detection), hardware APIs, webcam selector with live preview, and Chromeyumm state.
 - Relative contentUrl resolution — paths like `src/views/feature-check/index.html` in display-config.json are auto-resolved to `file:///` URLs relative to cwd. Full URLs (`http://`, `file:///`) still work as before.
 - Video codec documentation — added codec support table and ffmpeg VP9 conversion guide to FRONTEND.md. CEF standard builds exclude H.264/AAC; use VP9/WebM for video content.
@@ -36,6 +37,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - Docs system (harness-engineering model)
 - WebView2 removal (stripped all WebView2 code from cef-wrapper.cpp)
 - Spout + D3D multi-window coexistence (both output modes run simultaneously, sharing D3D device)
+- CEF auto-upgrade (`--latest` / `--check-latest` flags in `setup-vendors.ts`, `bun run upgrade:cef` / `bun run check-updates` in `package.json`)
 - GitHub Releases (`scripts/release.ts` — tag, package, publish)
 - Strip Electrobun heritage code (WebView2 ~630 lines, WGPU shims ~295 lines, dead includes, orphaned headers)
 - Consolidated Debug Panel (merged `<slot-overlay>` into `<debug-panel>`, data-driven hotkeys, auto-injection, `window.__chromeyumm` state object)

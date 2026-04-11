@@ -4,6 +4,7 @@ import { readFileSync, existsSync } from "fs";
 import { loadDisplayConfig, resolveVirtualCanvas } from "./config.ts";
 import { SpoutInput } from "./spout-input.ts";
 import { native, cs } from "../chromeyumm/ffi.ts";
+import { CEF_VERSION } from "./_cef-version.ts";
 
 // ---------------------------------------------------------------------------
 // Start the Windows message loop + CEF on a background thread.
@@ -440,6 +441,7 @@ function buildChromeyummState() {
       },
     },
     hotkeys,
+    cefVersion: CEF_VERSION,
   };
 }
 

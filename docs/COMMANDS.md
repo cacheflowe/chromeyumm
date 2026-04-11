@@ -29,9 +29,20 @@ bun scripts/setup-vendors.ts --cef-only
 bun scripts/setup-vendors.ts --spout-only
 bun scripts/setup-vendors.ts --cef-version "VERSION"  # override CEF version
 bun scripts/setup-vendors.ts --spout-tag "TAG"         # override Spout tag
+bun scripts/setup-vendors.ts --cef-archive path.tar.bz2  # use a local archive
 ```
 
-See `native/README.md` for vendor layout details and `docs/references/vendor-management.md` for upgrade strategy.
+## CEF / Chromium Upgrade
+
+```bash
+bun run check-updates   # report if a newer CEF build is available
+bun run upgrade:cef     # auto-fetch latest CEF, download, build wrapper, rebuild app
+```
+
+After `upgrade:cef`: run `bun run test` and `dist/chromeyumm.exe` to verify, then commit
+`scripts/setup-vendors.ts` (the DEFAULT_CEF_VERSION is updated in place) and release.
+
+See `docs/references/vendor-management.md` for the full procedure and what to check after upgrade.
 
 ## CEF Wrapper Library Build
 
@@ -67,9 +78,12 @@ bun run build    # outputs to src/views/r3f/dist/
 | `bun scripts/release.ts --skip-build` | Package existing `dist/` without rebuilding |
 | `bun scripts/release.ts --bump patch` | Bump patch version, build, and package |
 | `bun scripts/release.ts --bump minor` | Bump minor version, build, and package |
-| `bun scripts/release.ts --publish` | Build, package, git tag, and create GitHub release (requires `gh` CLI) |
+| `bun run release:publish` | **One-command release**: auto-bump patch, build, package, generate release notes, git tag + push, create GitHub release |
+| `bun scripts/release.ts --publish --bump minor` | Same as above but bump minor instead of patch |
 
-GitHub Actions: push a `v*` tag to trigger `.github/workflows/release.yml` automatically.
+`--publish` requires the [GitHub CLI](https://cli.github.com/) (`gh`). Release notes are auto-generated from git commits since the last tag.
+
+GitHub Actions: push a `v*` tag to trigger `.github/workflows/release.yml` automatically (same notes format).
 
 ## What Requires Which Build
 

@@ -7,9 +7,12 @@
  *   bun scripts/release.ts --bump minor       — bump minor version
  *   bun scripts/release.ts --bump major       — bump major version
  *   bun scripts/release.ts --skip-build       — package existing dist/ without rebuilding
- *   bun scripts/release.ts --publish          — also create git tag + GitHub release (requires `gh` CLI)
+ *   bun scripts/release.ts --publish          — bump patch, build, package, tag, push, create GitHub release
+ *   bun scripts/release.ts --publish --bump minor  — same but bump minor instead of patch
  *
  * Produces:  release/chromeyumm-v{VERSION}-win-x64.zip
+ *
+ * --publish auto-generates release notes from git commits since the last tag.
  */
 
 import { existsSync, mkdirSync, readdirSync, statSync, readFileSync, writeFileSync, unlinkSync } from "fs";
@@ -77,6 +80,59 @@ function collectFiles(dir: string, base: string = dir): string[] {
   return results;
 }
 
+/** Get the most recent git tag, or null if none exist. */
+async function getLastTag(): Promise<string | null> {
+  const result = await $`git describe --tags --abbrev=0`
+    .cwd(ROOT)
+    .quiet()
+    .catch(() => null);
+  if (!result || result.exitCode !== 0) return null;
+  return result.stdout.toString().trim();
+}
+
+/** Generate release notes from git log since the given tag (or all commits if null). */
+async function generateReleaseNotes(sinceTag: string | null): Promise<string> {
+  const range = sinceTag ? `${sinceTag}..HEAD` : "HEAD";
+  const result = await $`git log ${range} --pretty=format:%s --no-merges`
+    .cwd(ROOT)
+    .quiet()
+    .catch(() => null);
+  if (!result || result.exitCode !== 0 || !result.stdout.toString().trim()) {
+    return "(No changes since last release)";
+  }
+
+  const commits = result.stdout
+    .toString()
+    .trim()
+    .split("\n")
+    .filter((line: string) => line.trim().length > 0);
+
+  if (commits.length === 0) return "(No changes since last release)";
+
+  const lines = [`## What's Changed\n`];
+  for (const msg of commits) {
+    lines.push(`- ${msg}`);
+  }
+
+  // Add contributor info
+  const authors = await $`git log ${range} --pretty=format:%an --no-merges`
+    .cwd(ROOT)
+    .quiet()
+    .catch(() => null);
+  if (authors && authors.exitCode === 0) {
+    const unique = [...new Set(authors.stdout.toString().trim().split("\n").filter(Boolean))];
+    if (unique.length > 0) {
+      lines.push(`\n**Contributors:** ${unique.join(", ")}`);
+    }
+  }
+
+  if (sinceTag) {
+    lines.push(`\n**Full Changelog:** \`${sinceTag}...v{VERSION}\``);
+  }
+
+  return lines.join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -91,8 +147,9 @@ if (bumpType && !["patch", "minor", "major"].includes(bumpType)) {
   process.exit(1);
 }
 
-// 1. Bump version if requested
-if (bumpType) bumpVersion(bumpType);
+// 1. Bump version: --publish implies --bump patch unless --bump is explicitly specified
+const effectiveBump = bumpType ?? (publish ? "patch" : null);
+if (effectiveBump) bumpVersion(effectiveBump);
 const version = readVersion();
 const tag = `v${version}`;
 const zipName = `chromeyumm-${tag}-win-x64.zip`;
@@ -182,18 +239,42 @@ if (publish) {
     console.warn("⚠ Working tree has uncommitted changes");
   }
 
+  // Generate release notes from commits since last tag
+  console.log(`  Generating release notes...`);
+  const lastTag = await getLastTag();
+  let notes = await generateReleaseNotes(lastTag);
+  notes = notes.replace("{VERSION}", version);
+
+  console.log(`\n── Release Notes ───────────────────────────────────────`);
+  console.log(notes);
+  console.log("─".repeat(50));
+
+  // Commit the version bump
+  console.log(`\n  Committing version bump...`);
+  await $`git add package.json`.cwd(ROOT);
+  await $`git commit -m "release: ${tag}"`.cwd(ROOT).catch(() => {
+    // No changes to commit (e.g. --skip-build without --bump)
+  });
+
   // Create and push tag
   console.log(`  Creating tag ${tag}...`);
   await $`git tag -a ${tag} -m "Release ${tag}"`.cwd(ROOT);
-  await $`git push origin ${tag}`.cwd(ROOT);
+  await $`git push origin HEAD ${tag}`.cwd(ROOT);
+
+  // Write notes to temp file to avoid shell escaping issues
+  const notesPath = join(ROOT, "_release_notes.md");
+  writeFileSync(notesPath, notes);
 
   // Create GitHub release with the zip as asset
   console.log(`  Creating GitHub release...`);
-  await $`gh release create ${tag} "${zipPath}" --title "Chromeyumm ${tag}" --notes "Release ${tag}" --latest`.cwd(
+  await $`gh release create ${tag} "${zipPath}" --title "Chromeyumm ${tag}" --notes-file "${notesPath}" --latest`.cwd(
     ROOT,
   );
 
-  console.log(`✓ Published ${tag} to GitHub`);
+  // Clean up temp file
+  unlinkSync(notesPath);
+
+  console.log(`\n✓ Published ${tag} to GitHub`);
 }
 
 console.log("\n✓ Release complete");
