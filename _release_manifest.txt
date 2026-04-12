@@ -1,3 +1,4 @@
+D:\workspace\chromeyumm\dist\app.ico
 D:\workspace\chromeyumm\dist\bootstrap.exe
 D:\workspace\chromeyumm\dist\bootstrapc.exe
 D:\workspace\chromeyumm\dist\chromeyumm Helper.exe
@@ -6,6 +7,7 @@ D:\workspace\chromeyumm\dist\chrome_100_percent.pak
 D:\workspace\chromeyumm\dist\chrome_200_percent.pak
 D:\workspace\chromeyumm\dist\chrome_elf.dll
 D:\workspace\chromeyumm\dist\d3dcompiler_47.dll
+D:\workspace\chromeyumm\dist\debug.log
 D:\workspace\chromeyumm\dist\dxcompiler.dll
 D:\workspace\chromeyumm\dist\dxil.dll
 D:\workspace\chromeyumm\dist\icudtl.dat

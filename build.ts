@@ -175,9 +175,10 @@ async function buildNative() {
   console.log(`✓ DLL: ${dll}`);
 
   // Compile CEF subprocess helper exe
+  // /O1 works around MSVC 19.43 C1001 ICE in string_view with /Od + C++20.
   console.log("\n── CEF helper exe ──────────────────────────────────────");
   await runMsvc(
-    `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
+    `cl /c /EHsc /std:c++20 /O1 /DNOMINMAX /MT` +
       ` /I"${cefInclude}"` +
       ` /Fo"${helperObj}" "${join(NATIVE_DIR, "cef-helper.cpp")}"`,
   );
