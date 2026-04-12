@@ -29,6 +29,8 @@ const isDev = process.argv.includes("--dev");
 // ---------------------------------------------------------------------------
 
 let vcvarsallPath = "";
+let _batCounter = 0;
+let _useSccache = false;
 
 async function findMsvc() {
   const vswhere = join(
@@ -55,14 +57,28 @@ async function findMsvc() {
     vcvarsallPath = candidate;
     console.log(`✓ MSVC: ${candidate}`);
   }
+
+  try {
+    await $`sccache --version`.quiet();
+    _useSccache = true;
+    console.log("✓ sccache: found — C++ compile steps will be cached");
+  } catch {
+    // sccache not installed; compile normally
+  }
 }
 
 async function runMsvc(command: string) {
+  // Prefix compile-only steps with sccache when available. Link steps (starting
+  // with "link ") are not cached — sccache only supports compilation.
+  const isCompile = command.trimStart().startsWith("cl ");
+  const cmd = _useSccache && isCompile ? command.replace(/^(\s*)cl /, "$1sccache cl ") : command;
+
   if (!vcvarsallPath) {
-    return await $`${command}`;
+    return await $`${cmd}`;
   }
-  const bat = join(ROOT, "_build_tmp.bat");
-  writeFileSync(bat, `@echo off\ncall "${vcvarsallPath}" x64 >nul\n${command}`);
+  // Each invocation gets its own bat file so parallel calls don't overwrite each other.
+  const bat = join(ROOT, `_build_tmp_${_batCounter++}.bat`);
+  writeFileSync(bat, `@echo off\ncall "${vcvarsallPath}" x64 >nul\n${cmd}`);
   try {
     return await $`cmd /c "${bat}"`;
   } finally {
@@ -104,24 +120,57 @@ async function buildNative() {
   else console.log("SpoutDX not found — building without Spout output.");
 
   const obj = join(NATIVE_DIR, "build", "cef-wrapper.obj");
+  const frameTransportRuntimeObj = join(NATIVE_DIR, "build", "frame-transport-runtime.obj");
+  const frameTransportExportsObj = join(NATIVE_DIR, "build", "frame-transport-exports.obj");
+  const frameOutputManagerObj = join(NATIVE_DIR, "build", "frame-output-manager.obj");
+  const ddpOutputObj = join(NATIVE_DIR, "build", "frame-output-ddp.obj");
+  const spoutOutputObj = join(NATIVE_DIR, "build", "frame-output-spout.obj");
   const dll = join(NATIVE_DIR, "build", "libNativeWrapper.dll");
   const helperObj = join(NATIVE_DIR, "build", "cef-helper.obj");
   const helperExe = join(NATIVE_DIR, "build", "chromeyumm Helper.exe");
 
-  // Compile DLL
-  await runMsvc(
-    `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
-      ` /I"${cefInclude}"` +
-      ` /D_USRDLL /D_WINDLL` +
-      ` /Fo"${obj}" "${join(NATIVE_DIR, "cef-wrapper.cpp")}"`,
-  );
+  // Compile DLL — all translation units are independent, build in parallel.
+  await Promise.all([
+    runMsvc(
+      `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
+        ` /I"${cefInclude}"` +
+        ` /D_USRDLL /D_WINDLL` +
+        ` /Fo"${obj}" "${join(NATIVE_DIR, "cef-wrapper.cpp")}"`,
+    ),
+    runMsvc(
+      `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
+        ` /I"${cefInclude}"` +
+        ` /Fo"${frameTransportRuntimeObj}" "${join(NATIVE_DIR, "frame-output", "frame_transport_runtime.cpp")}"`,
+    ),
+    runMsvc(
+      `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
+        ` /I"${cefInclude}"` +
+        ` /Fo"${frameTransportExportsObj}" "${join(NATIVE_DIR, "frame-output", "frame_transport_exports.cpp")}"`,
+    ),
+    runMsvc(
+      `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
+        ` /I"${cefInclude}"` +
+        ` /Fo"${frameOutputManagerObj}" "${join(NATIVE_DIR, "frame-output", "core", "frame_output_manager.cpp")}"`,
+    ),
+    runMsvc(
+      `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
+        ` /I"${cefInclude}"` +
+        ` /Fo"${ddpOutputObj}" "${join(NATIVE_DIR, "frame-output", "protocols", "ddp", "ddp_output.cpp")}"`,
+    ),
+    runMsvc(
+      `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
+        ` /I"${cefInclude}"` +
+        ` /I"${NATIVE_DIR}"` +
+        ` /Fo"${spoutOutputObj}" "${join(NATIVE_DIR, "frame-output", "protocols", "spout", "spout_output.cpp")}"`,
+    ),
+  ]);
 
   await runMsvc(
     `link /DLL /OUT:"${dll}"` +
       ` user32.lib ole32.lib shell32.lib shlwapi.lib advapi32.lib dcomp.lib d2d1.lib` +
       ` dwmapi.lib d3d11.lib dxgi.lib kernel32.lib comctl32.lib delayimp.lib libcmt.lib` +
       ` "${cefLib}" "${cefWrapper}" /DELAYLOAD:libcef.dll` +
-      ` ${spoutArg} "${obj}"`,
+      ` ${spoutArg} "${obj}" "${frameTransportRuntimeObj}" "${frameTransportExportsObj}" "${frameOutputManagerObj}" "${ddpOutputObj}" "${spoutOutputObj}"`,
   );
   console.log(`✓ DLL: ${dll}`);
 

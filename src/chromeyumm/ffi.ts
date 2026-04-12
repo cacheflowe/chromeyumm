@@ -113,6 +113,30 @@ export const native = (() => {
       },
       stopD3DOutput: { args: [FFIType.u32], returns: FFIType.void },
 
+      // ── Native DDP output ───────────────────────────────────────────────
+      // clearExisting=true replaces all DDP outputs; false appends a new one.
+      startDdpOutput: {
+        args: [
+          FFIType.u32,     // webviewId
+          FFIType.cstring, // controllerAddress
+          FFIType.u16,     // port
+          FFIType.u8,      // destinationId
+          FFIType.i32,     // pixelStart
+          FFIType.i32,     // srcX
+          FFIType.i32,     // srcY
+          FFIType.i32,     // srcW
+          FFIType.i32,     // srcH
+          FFIType.bool,    // zigZagRows
+          FFIType.bool,    // flipH
+          FFIType.bool,    // flipV
+          FFIType.i32,     // rotate (0, 90, 180, 270)
+          FFIType.bool,    // clearExisting
+        ],
+        returns: FFIType.bool,
+      },
+      stopDdpOutput: { args: [FFIType.u32], returns: FFIType.void },
+      getDdpOutputStats: { args: [FFIType.u32], returns: FFIType.cstring },
+
       // ── Spout sender ────────────────────────────────────────────────────
       startSpoutSender: { args: [FFIType.u32, FFIType.cstring], returns: FFIType.bool },
       stopSpoutSender: { args: [FFIType.u32], returns: FFIType.void },

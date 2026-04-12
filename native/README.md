@@ -9,7 +9,28 @@ This directory holds the C++ source and vendor libraries for the Chromeyumm CEF 
 | `cef-wrapper.cpp` | `package/src/native/win/nativeWrapper.cpp` | Main CEF/D3D/Spout wrapper DLL |
 | `cef-helper.cpp`  | `package/src/native/win/cef_process_helper_win.cpp` | CEF renderer helper (Spout input V8 bindings) |
 | `shared/`         | `package/src/native/shared/` (subset) | Cross-platform headers used by cef-wrapper.cpp |
+| `frame-output/`   | — | Frame transport module: protocol outputs (DDP, Spout sender), staging readback, session management |
 | `app.ico`         | — | Application icon (32x32, loaded at window creation by `getAppIcon()`) |
+
+### frame-output/ layout
+
+```
+native/frame-output/
+  frame_transport_exports.cpp   ← DLL export entry points (startDdpOutput, startSpoutSender, …)
+  frame_transport_runtime.cpp   ← FrameTransportRuntime / TransportSession / staging readback
+  frame_transport_runtime.h
+  core/
+    output_protocol.h           ← IOutputProtocol interface, BgraFrameView, FrameContext, SourceRect
+    frame_output_manager.cpp    ← FrameOutputManager: owns vector<IOutputProtocol>, dispatches frames
+    frame_output_manager.h
+  protocols/
+    ddp/
+      ddp_output.cpp            ← DDP/UDP packetizer: dirty-row detection, zigzag/flip/rotate, keepalive
+      ddp_output.h
+    spout/
+      spout_output.cpp          ← GPU-path Spout sender (SpoutDX::SendTexture, no CPU copy)
+      spout_output.h
+```
 
 ### Original files (from Electrobun fork, now fully owned)
 

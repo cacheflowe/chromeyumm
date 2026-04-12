@@ -135,6 +135,7 @@ native/
 - [AGENTS.md](AGENTS.md) — Root agent map, quick start, key directories
 - [DEVELOPMENT.md](DEVELOPMENT.md) — Deep C++ internals, GPU performance history, build details
 - [docs/COMMANDS.md](docs/COMMANDS.md) — All build/run/dev commands
+- [docs/references/app-layer-diagram.md](docs/references/app-layer-diagram.md) — Layered Mermaid diagrams for runtime, frame flow, and control flow
 - [docs/BACKEND.md](docs/BACKEND.md) — C++ DLL internals, FFI patterns
 - [docs/FRONTEND.md](docs/FRONTEND.md) — Views architecture, browser-side patterns
 - [docs/RELIABILITY.md](docs/RELIABILITY.md) — Failure modes, GPU crash recovery

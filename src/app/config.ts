@@ -27,6 +27,20 @@ export interface SpoutInputConfig {
   senderName: string;
 }
 
+export interface DdpOutputConfig {
+  controllerAddress: string;
+  port?: number;
+  destinationId?: number;
+  pixelStart?: number;
+  source: SourceRect;
+  zigZagRows?: boolean;
+  flipH?: boolean;
+  flipV?: boolean;
+  rotate?: 0 | 90 | 180 | 270;
+  label?: string;
+  enabled?: boolean;
+}
+
 export interface DisplayConfig {
   virtualCanvas?: { width: number; height: number };
   windows: WindowConfig[];
@@ -37,6 +51,8 @@ export interface DisplayConfig {
   contentUrl?: string | null;
   spoutOutput?: SpoutOutputConfig;
   spoutInput?: SpoutInputConfig;
+  ddpOutput?: DdpOutputConfig;
+  ddpOutputs?: DdpOutputConfig[];
 }
 
 // ---------------------------------------------------------------------------

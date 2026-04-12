@@ -3,7 +3,7 @@
 
 # Chromeyumm
 
-A minimal Windows CEF browser built for site-specific installations. Renders web content across multiple displays via direct D3D11 GPU blitting, with Spout texture I/O for integration with TouchDesigner, Resolume, and other real-time environments.
+A minimal Windows CEF browser built for site-specific installations. Renders web content across multiple displays via direct D3D11 GPU blitting, with Spout texture I/O for integration with TouchDesigner, Resolume, and other real-time environments — plus native DDP output for driving LED panels and pixel-mapped fixtures via FPP and compatible controllers.
 
 ---
 
@@ -12,7 +12,9 @@ A minimal Windows CEF browser built for site-specific installations. Renders web
 - **Multi-window D3D output** — one OSR CEF browser renders the full virtual canvas; sub-regions are blitted via `CopySubresourceRegion` to bare Win32 windows on each physical display. Zero DWM thumbnail overhead, no monitor boundary limits on canvas size.
 - **Spout output** — OSR `OnAcceleratedPaint` delivers a DXGI shared texture directly to `SpoutDX::SendTexture`. GPU→GPU, zero CPU, zero PCIe traffic. Intel 0% / NVIDIA 15% at 60fps on an Optimus laptop.
 - **Spout input** — Win32 named shared memory bridge. Two-tier: tier 1 zero-copy `MapViewOfFile`-backed `ArrayBuffer` (V8 sandbox off), tier 2 persistent-buffer `memcpy` (sandbox safe). Available at `window.__spoutFrameBuffer` / `window.__spoutGetFrame` in the browser.
-- **`display-config.json`** — human-readable config file for window layout, canvas size, content URL, Spout settings, interactive/output mode defaults.
+- **DDP output** — native DDP (Distributed Display Protocol) over UDP for driving LED panels, pixel strips, and matrix displays via [Falcon Player (FPP)](https://falconchristmas.com/), WLED, and other DDP-compatible controllers. Map any sub-region of the virtual canvas to a controller — multiple DDP outputs fan out independently for pixel-mapping across unique fixtures at different IP addresses. Features dirty-row detection (only changed rows are sent), keepalive resend, and per-output stats.
+- **Unified frame transport** — all outputs (D3D, Spout, DDP, and future protocols like ArtNet, sACN, DMX) share a common `IOutputProtocol` architecture. GPU-native outputs (Spout) receive the shared texture directly; pixel-based outputs (DDP) use staging readback only when needed. Adding a new protocol is a single class implementation.
+- **`display-config.json`** — human-readable config file for window layout, canvas size, content URL, Spout settings, DDP outputs, interactive/output mode defaults.
 - **Hotkeys** — Ctrl+M (toggle interactive/output mode), Ctrl+Shift+M (reset displays), Ctrl+R (reload), Ctrl+F (toggle alwaysOnTop), Ctrl+D (debug panel), Escape (quit).
 - **Owned codebase** — detached from Electrobun upstream. CEF version upgrades are a vendor drop-in.
 
@@ -26,10 +28,13 @@ bun.exe (Bun runtime)
 │     └── chromeyumm       local framework (src/chromeyumm/)
 │           └── ffi.ts     Bun dlopen → libNativeWrapper.dll
 │
-└── libNativeWrapper.dll   C++ CEF/D3D11/Spout wrapper (native/cef-wrapper.cpp)
+└── libNativeWrapper.dll   C++ CEF/D3D11/Spout/DDP wrapper
       ├── CEF OSR browser  (OnAcceleratedPaint → shared DXGI texture)
       ├── D3D11 output     (CopySubresourceRegion → NativeDisplayWindow swap chains)
-      ├── Spout sender     (SpoutDX → TouchDesigner / Resolume)
+      ├── Frame transport  (unified fan-out to all output protocols)
+      │     ├── Spout      (GPU path — SpoutDX::SendTexture → TouchDesigner / Resolume)
+      │     ├── DDP        (CPU path — staging readback → UDP to FPP / WLED controllers)
+      │     └── (future)   ArtNet · sACN · DMX · NDI — same IOutputProtocol interface
       └── Spout receiver   (staging readback → Win32 shared memory → browser)
 ```
 
@@ -132,6 +137,10 @@ native/
   cef-wrapper.cpp        Main C++ DLL (CEF, D3D11, Spout, NativeDisplayWindow)
   cef-helper.cpp         CEF renderer process helper (Spout input V8 bindings)
   shared/                Shared C++ headers
+  frame-output/          Unified frame transport module
+    core/                IOutputProtocol interface, FrameOutputManager, frame types
+    protocols/ddp/       DDP output (UDP to FPP/WLED controllers)
+    protocols/spout/     Spout output (GPU texture sharing via SpoutDX)
   vendor/                CEF + Spout vendor dirs (gitignored — see native/README.md)
 
 src/
@@ -190,7 +199,23 @@ display-config.json      Display layout config
   "spoutOutput": { "senderName": "Chromeyumm" },
 
   // Spout input (optional — works in any mode)
-  "spoutInput":  { "senderName": "TD_Spout_Sender" }
+  "spoutInput":  { "senderName": "TD_Spout_Sender" },
+
+  // DDP outputs — map virtual canvas regions to LED controllers
+  "ddpOutputs": [
+    {
+      "label": "LED panel A",
+      "controllerAddress": "192.168.1.100",
+      "port": 4048,
+      "source": { "x": 0, "y": 0, "width": 32, "height": 16 }
+    },
+    {
+      "label": "LED strip B",
+      "controllerAddress": "192.168.1.101",
+      "source": { "x": 32, "y": 0, "width": 1, "height": 300 },
+      "zigZagRows": true
+    }
+  ]
 }
 ```
 
@@ -209,6 +234,34 @@ If `display-config.json` is absent, the app auto-detects connected displays and 
 | **Ctrl+D** | Toggle debug panel (pages must include debug-panel.js) |
 | **F12** | Toggle browser DevTools (undocked window) |
 | **Escape** | Quit cleanly |
+
+---
+
+## Glossary
+
+| Term | Definition |
+|---|---|
+| **ANGLE** | Google's graphics abstraction layer. Translates OpenGL ES calls to platform-native APIs. Chromeyumm uses the `d3d11` backend so CEF renders via Direct3D 11 on Windows. |
+| **Blitting** | Copying pixel data from one surface to another. In Chromeyumm, `CopySubresourceRegion` blits sub-regions of the shared texture to each display window's swap chain — a GPU-side copy with no CPU involvement. |
+| **Bun** | A fast JavaScript/TypeScript runtime (alternative to Node.js). Chromeyumm uses Bun for its native `dlopen` FFI, single-binary compilation (`bun build --compile`), and fast startup. |
+| **CEF** | Chromium Embedded Framework — a C++ library for embedding a Chromium browser in applications. Provides the full web engine (HTML, CSS, JS, WebGL, WebGPU) without the Chrome UI. Chromeyumm uses CEF in OSR mode to render web content to a GPU texture instead of a window. |
+| **D3D11** | Direct3D 11, Microsoft's GPU graphics API. Used for texture creation, swap chain management, and GPU-to-GPU copies. All display output in Chromeyumm goes through D3D11. |
+| **DDP** | Distributed Display Protocol — a UDP protocol for sending RGB pixel data to LED controllers. Each packet carries up to 480 pixels (1440 bytes RGB). Used by FPP (Falcon Player), WLED, and other lighting controllers. |
+| **DWM** | Desktop Window Manager — the Windows compositor that manages window rendering. Chromeyumm avoids DWM overhead by using OSR mode and direct GPU blitting instead of window capture. DWM thumbnails are used only for NativeDisplayWindow mirroring. |
+| **DXGI** | DirectX Graphics Infrastructure — the layer beneath D3D11 that manages swap chains, adapters, and shared texture handles. `IDXGISwapChain1` is the flip-model swap chain, and DXGI NT handles enable cross-device texture sharing. |
+| **FFI** | Foreign Function Interface — a mechanism for calling native C/C++ functions from a higher-level language. Bun's `dlopen` FFI loads `libNativeWrapper.dll` and calls exported C functions directly, with no IPC or serialization overhead. |
+| **FPP** | Falcon Player — open-source LED control software that runs on Raspberry Pi and BeagleBone. Accepts DDP input over the network and drives WS2812, APA102, and other LED strips/panels. |
+| **Frame transport** | Chromeyumm's unified output architecture. `OnAcceleratedPaint` delivers each frame to a `FrameOutputManager` which fans it out to all registered outputs (Spout, DDP, future protocols). GPU outputs receive the texture directly; CPU outputs trigger a staging readback only when needed. |
+| **IOutputProtocol** | The C++ interface that all frame output protocols implement. Methods: `Start()`, `Stop()`, `OnFrame()` (CPU path), `OnGpuFrame()` (GPU path). Adding a new output protocol means implementing this single interface. |
+| **NDW** | NativeDisplayWindow — a bare Win32 window (no chrome, no taskbar entry) positioned on a physical display. Content is delivered via D3D11 blit or DWM thumbnail, not by CEF rendering into it. |
+| **OnAcceleratedPaint** | A CEF callback fired every rendered frame in OSR mode with `shared_texture_enabled=1`. Delivers a DXGI NT shared texture handle — the GPU texture containing the browser's rendered content. This is the single entry point for all frame output. |
+| **Optimus** | NVIDIA's hybrid GPU technology (Intel iGPU + NVIDIA dGPU). Requires `in-process-gpu: true` in CEF and careful D3D device management — the CEF compositor may render on a different GPU than the one Spout or D3D output uses. |
+| **OSR** | Off-Screen Rendering — a CEF mode where the browser renders to a texture instead of a window. Combined with `shared_texture_enabled=1`, this delivers a DXGI shared texture handle every frame with zero CPU readback. |
+| **Pixel mapping** | The process of mapping regions of a 2D canvas to physical LED fixtures. In Chromeyumm, each DDP output defines a `source` rect (which part of the virtual canvas to sample) and a controller address (where to send the pixel data). Multiple outputs can map different regions to different controllers. |
+| **Spout** | A real-time GPU texture sharing framework for Windows. Chromeyumm sends textures via `SpoutDX::SendTexture` (output) and receives via `SpoutDX::ReceiveTexture` (input). Used for integration with TouchDesigner, Resolume, and other real-time tools. |
+| **Staging texture** | A D3D11 texture with `D3D11_USAGE_STAGING` and `CPU_ACCESS_READ`. Used to copy GPU texture data to CPU memory for protocols that need pixel access (DDP). Only created when CPU-path outputs are active. |
+| **Swap chain** | A DXGI object (`IDXGISwapChain1`) that manages front/back buffers for a window. Each NativeDisplayWindow has its own swap chain. `Present(0, ALLOW_TEARING)` flips the buffer to the screen without vsync. |
+| **Virtual canvas** | The full rendering surface defined by `virtualCanvas` in `display-config.json`. The browser renders at this resolution; display windows and DDP outputs each sample a sub-region of it. |
 
 ---
 

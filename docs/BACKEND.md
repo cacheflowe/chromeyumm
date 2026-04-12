@@ -11,6 +11,7 @@ The "backend" is `libNativeWrapper.dll` — a single C++ DLL compiled from `nati
 | `native/cef-wrapper.cpp` | ~9k | Main DLL: CEF initialization, window management, D3D11 output, Spout I/O, event loop |
 | `native/cef-helper.cpp` | ~300 | CEF renderer process: V8 bindings for Spout input, navigation fixes |
 | `native/shared/*.h` | ~16 files | Shared headers: callbacks, config, parsers, accelerator handling, etc. |
+| `native/frame-output/` | — | Frame transport module: protocol outputs (DDP, Spout sender), staging readback, per-webview session management |
 
 ## Key C++ Structures
 
@@ -22,14 +23,27 @@ The "backend" is `libNativeWrapper.dll` — a single C++ DLL compiled from `nati
 | `D3DOutputState` | `vector<D3DOutputSlot>` — the slot list for one webview |
 | `g_d3dOutputStates` | Map of webviewId → `D3DOutputState` |
 
-### Spout Output
+### Frame Output Host
 
 | Struct | Purpose |
 |---|---|
-| `SpoutWindowState` | D3D11 device/context, SpoutDX sender, DXGI swap chain, active flag — shared by both Spout and D3D output pipelines |
+| `FrameOutputHostState` | D3D11 device/context, DXGI swap chain, active flag — shared by all frame-output transports (Spout sender, DDP) and D3D display output |
+| `g_frameOutputHosts` | Map of webviewId → `FrameOutputHostState` |
 | `g_nextWebviewSharedTexture` | Flag set by `setNextWebviewSharedTexture` before webview creation |
 
-**Coexistence**: Spout sender and D3D multi-window output share the same `SpoutWindowState.d3dDevice`. When both are active, `startD3DOutput` reuses the Spout-created device (skips `D3D11CreateDevice`). `stopD3DOutput` only releases the device when `state.sender == nullptr` (D3D-only mode); otherwise Spout retains ownership.
+**D3D device ownership**: All frame-output transports (Spout sender, DDP) and D3D multi-window output share the single `FrameOutputHostState.d3dDevice`, initialized once by `ensureFrameTransportHostRuntime`. This is required because `OpenSharedResource1` in `OnAcceleratedPaint` needs a device created through that specific path — independently created devices fail with `DXGI_ERROR_DEVICE_REMOVED` on the first call. `notifyFrameTransportOutputsStopped` releases the device only when no transport outputs remain active.
+
+### Frame Transport Module
+
+The `native/frame-output/` module owns all transport protocol outputs. It is separate from `cef-wrapper.cpp` and communicates back via the `HostServices` callback struct (registered at `initEventLoop` time).
+
+| Component | Role |
+|---|---|
+| `FrameTransportRuntime` | Singleton; maps webviewId → `TransportSession` |
+| `TransportSession` | Per-webview: `FrameOutputManager`, staging texture, DDP raw pointer cache |
+| `FrameOutputManager` | Owns `vector<unique_ptr<IOutputProtocol>>`; dispatches GPU frames and CPU (staging readback) frames |
+| `DdpOutput` | CPU-path protocol: dirty-row detection, UDP packetization |
+| `SpoutOutput` | GPU-path protocol: `SpoutDX::SendTexture`, no CPU round-trip |
 
 ### Spout Input
 
@@ -81,6 +95,11 @@ All FFI symbols are declared in `src/chromeyumm/ffi.ts`. The full export list:
 - `startD3DOutput(webviewId)` → bool
 - `addD3DOutputSlot(webviewId, displayId, srcX, srcY, srcW, srcH)` → bool
 - `stopD3DOutput(webviewId)`
+
+### DDP Output
+- `startDdpOutput(webviewId, controllerAddress, port, destinationId, pixelStart, srcX, srcY, srcW, srcH, zigZagRows, flipH, flipV, rotate, clearExisting)` → bool
+- `stopDdpOutput(webviewId)`
+- `getDdpOutputStats(webviewId)` → JSON cstring
 
 ### Spout Sender
 - `startSpoutSender(webviewId, senderName)` → bool

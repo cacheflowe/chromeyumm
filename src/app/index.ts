@@ -69,6 +69,9 @@ let debugInjectScript = "";
 
 const featureCheckMode = process.argv.includes("--feature-check");
 const config = featureCheckMode ? null : loadDisplayConfig();
+const configuredDdpOutputs = [...(config?.ddpOutput ? [config.ddpOutput] : []), ...(config?.ddpOutputs ?? [])].filter(
+  (ddp) => ddp.enabled !== false,
+);
 
 interface DisplaySlot {
   slot: number;
@@ -243,9 +246,11 @@ if (fullscreen) console.log("[chromeyumm] fullscreen: true");
 if (alwaysOnTop) console.log("[chromeyumm] alwaysOnTop: true");
 const useD3DOutput = slots.length > 0;
 const modeSpout = !!config?.spoutOutput;
+const modeDdp = configuredDdpOutputs.length > 0;
 const modeMultiWindow = useD3DOutput;
 const modeParts = [
   modeSpout ? `spout → "${config!.spoutOutput!.senderName}"` : null,
+  modeDdp ? `ddp (${configuredDdpOutputs.length} output${configuredDdpOutputs.length !== 1 ? "s" : ""})` : null,
   modeMultiWindow ? `multi-window D3D (${slots.length} slot${slots.length !== 1 ? "s" : ""})` : null,
 ].filter(Boolean);
 console.log(`[chromeyumm] Mode: ${modeParts.join(" + ") || "headless"} / ANGLE: d3d11`);
@@ -306,10 +311,88 @@ const master = new BrowserWindow({
 
 console.log(`[chromeyumm] Master window id=${master.id} at (${masterX},${masterY}), size=${totalWidth}×${totalHeight}`);
 
+let activeSpout = false;
 if (config?.spoutOutput) {
-  const ok = master.startSpout(config.spoutOutput.senderName);
-  if (ok) console.log(`[chromeyumm] Spout sender started: "${config.spoutOutput.senderName}"`);
+  activeSpout = master.startSpout(config.spoutOutput.senderName);
+  if (activeSpout) console.log(`[chromeyumm] Spout sender started: "${config.spoutOutput.senderName}"`);
   else console.warn("[chromeyumm] Spout sender failed — is SpoutDX built into the DLL?");
+}
+
+const activeDdpOutputs: {
+  controllerAddress: string;
+  port: number;
+  destinationId: number;
+  pixelStart: number;
+  source: { x: number; y: number; width: number; height: number };
+  zigZagRows: boolean;
+  flipH: boolean;
+  flipV: boolean;
+  rotate: 0 | 90 | 180 | 270;
+  label: string | null;
+}[] = [];
+
+if (configuredDdpOutputs.length > 0) {
+  configuredDdpOutputs.forEach((ddp, idx) => {
+    const port = ddp.port ?? 4048;
+    const destinationId = ddp.destinationId ?? 0x01;
+    const pixelStart = ddp.pixelStart ?? 0;
+    const zigZagRows = ddp.zigZagRows ?? false;
+    const flipH = ddp.flipH ?? false;
+    const flipV = ddp.flipV ?? false;
+    const rotate = ddp.rotate ?? 0;
+    const ok = master.startDdpOutput({
+      controllerAddress: ddp.controllerAddress,
+      port,
+      destinationId,
+      pixelStart,
+      srcX: ddp.source.x,
+      srcY: ddp.source.y,
+      srcW: ddp.source.width,
+      srcH: ddp.source.height,
+      zigZagRows,
+      flipH,
+      flipV,
+      rotate,
+      clearExisting: idx === 0,
+    });
+
+    if (ok) {
+      activeDdpOutputs.push({
+        controllerAddress: ddp.controllerAddress,
+        port,
+        destinationId,
+        pixelStart,
+        source: {
+          x: ddp.source.x,
+          y: ddp.source.y,
+          width: ddp.source.width,
+          height: ddp.source.height,
+        },
+        zigZagRows,
+        flipH,
+        flipV,
+        rotate,
+        label: ddp.label ?? null,
+      });
+      const transformParts = [
+        zigZagRows ? "zigzag" : null,
+        flipH ? "flipH" : null,
+        flipV ? "flipV" : null,
+        rotate ? `rot${rotate}` : null,
+      ].filter(Boolean);
+      console.log(
+        `[chromeyumm] DDP output ${idx + 1}/${configuredDdpOutputs.length} started: ` +
+          `${ddp.controllerAddress}:${port} dst=${destinationId} start=${pixelStart} ` +
+          `src=(${ddp.source.x},${ddp.source.y} ${ddp.source.width}x${ddp.source.height})` +
+          (transformParts.length ? ` [${transformParts.join(" ")}]` : ""),
+      );
+    } else {
+      console.warn(
+        `[chromeyumm] DDP output ${idx + 1}/${configuredDdpOutputs.length} failed: ` +
+          `${ddp.controllerAddress}:${port}`,
+      );
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -379,12 +462,13 @@ createDisplayWindows();
 const SEP = "[chromeyumm] " + "─".repeat(52);
 console.log(SEP);
 console.log("[chromeyumm]  ACTIVE OUTPUTS");
-if (modeSpout) console.log(`[chromeyumm]    Spout        → "${config!.spoutOutput!.senderName}"`);
+if (activeSpout) console.log(`[chromeyumm]    Spout        → "${config!.spoutOutput!.senderName}"`);
+if (activeDdpOutputs.length > 0) console.log(`[chromeyumm]    DDP          → ${activeDdpOutputs.length} output(s)`);
 if (modeMultiWindow)
   console.log(
     `[chromeyumm]    Multi-window → ${displayWindows.length} D3D display window${displayWindows.length !== 1 ? "s" : ""}`,
   );
-if (!modeSpout && !modeMultiWindow) console.log("[chromeyumm]    (none — headless)");
+if (!activeSpout && activeDdpOutputs.length === 0 && !modeMultiWindow) console.log("[chromeyumm]    (none — headless)");
 console.log(`[chromeyumm]  Content URL  → ${contentUrl}`);
 console.log(SEP);
 
@@ -394,7 +478,14 @@ console.log(SEP);
 // ---------------------------------------------------------------------------
 
 const outputMode =
-  modeSpout && modeMultiWindow ? "spout+d3d" : modeSpout ? "spout" : modeMultiWindow ? "d3d" : "headless";
+  [activeSpout ? "spout" : null, activeDdpOutputs.length > 0 ? "ddp" : null, modeMultiWindow ? "d3d" : null]
+    .filter(Boolean)
+    .join("+") || "headless";
+
+function getDdpStatsSnapshot() {
+  if (activeDdpOutputs.length === 0) return null;
+  return master.getDdpOutputStats();
+}
 
 function buildChromeyummState() {
   const hotkeys: { key: string; action: string; stateKey?: string }[] = [
@@ -430,8 +521,14 @@ function buildChromeyummState() {
       mode: outputMode,
       d3d: { active: useD3DOutput, windowCount: displayWindows.length },
       spout: {
-        active: !!config?.spoutOutput,
+        active: activeSpout,
         senderName: config?.spoutOutput?.senderName ?? null,
+      },
+      ddp: {
+        active: activeDdpOutputs.length > 0,
+        outputCount: activeDdpOutputs.length,
+        outputs: activeDdpOutputs,
+        stats: getDdpStatsSnapshot(),
       },
     },
     input: {
@@ -521,8 +618,9 @@ GlobalShortcut.register("F12", () => {
 
 GlobalShortcut.register("Escape", () => {
   console.log("[chromeyumm] ESC: quitting");
-  if (config?.spoutOutput) master.stopSpout();
-  else destroyDisplayWindows();
+  if (activeDdpOutputs.length > 0) master.stopDdpOutput();
+  if (activeSpout) master.stopSpout();
+  if (useD3DOutput) destroyDisplayWindows();
   if (spoutInput) spoutInput.stop();
   process.exit(0);
 });
@@ -532,3 +630,14 @@ GlobalShortcut.register("Escape", () => {
 // Poll at 250ms so threadsafe FFI callbacks (hotkeys, CEF events) are processed
 // promptly even if the uv_async wakeup from the native thread is missed.
 setInterval(() => {}, 250);
+
+if (activeDdpOutputs.length > 0) {
+  setInterval(() => {
+    const stats = getDdpStatsSnapshot();
+    if (!stats) return;
+    const json = JSON.stringify(stats);
+    master.webview.executeJavascript(
+      `window.__chromeyumm && window.__chromeyumm.output && window.__chromeyumm.output.ddp && (window.__chromeyumm.output.ddp.stats=${json})`,
+    );
+  }, 1000);
+}

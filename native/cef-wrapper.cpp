@@ -53,6 +53,7 @@
 #include "shared/app_paths.h"
 #include "shared/accelerator_parser.h"
 #include "shared/chromium_flags.h"
+#include "frame-output/frame_transport_runtime.h"
 
 using namespace chromeyumm;
 
@@ -86,18 +87,21 @@ using namespace chromeyumm;
 //   MT/lib/SpoutDX_static.lib                       — static lib (matches /MT compile flag)
 // SpoutDX::SendTexture(ID3D11Texture2D*) sends a GPU texture directly to Spout receivers.
 // CEF's OnAcceleratedPaint delivers a DXGI NT shared texture handle every frame (OSR mode,
-// shared_texture_enabled=1). We open that handle and pass the texture directly to SpoutDX.
+// shared_texture_enabled=1). We open that handle and pass it to the frame-output transport layer.
 // No window capture (WGC) needed — zero DWM overhead, browser renders at full speed.
 // If SpoutDX headers are absent the code compiles without Spout; startSpoutSender() returns false.
+
+// D3D11.1 and DXGI — needed unconditionally for OpenSharedResource1 and swap chain creation,
+// regardless of whether SpoutDX is available.
+#include <d3d11_1.h>    // ID3D11Device1::OpenSharedResource1 (DXGI NT handles)
+#include <dxgi1_5.h>    // IDXGIFactory5 (tearing support), IDXGISwapChain1 (flip swap chain)
+
 #if __has_include("vendor/spout/include/SpoutDX/SpoutDX.h")
 #include "vendor/spout/include/SpoutDX/SpoutDX.h"
-#include <d3d11_1.h>    // ID3D11Device1::OpenSharedResource1 (for DXGI NT handles)
-#include <dxgi1_5.h>    // IDXGIFactory5 (tearing support), IDXGISwapChain1 (flip swap chain)
 #define CHROMEYUMM_HAS_SPOUT 1
-
 #else
-// SpoutDX not found — forward-declare stub so pointers in structs compile.
-// Spout output will not be available; startSpoutSender() will return false.
+// SpoutDX not found — forward-declare stub so SpoutInputState compiles.
+// Spout input/output will not be available; startSpoutSender() returns false.
 class spoutDX;
 #define CHROMEYUMM_HAS_SPOUT 0
 #endif
@@ -184,18 +188,19 @@ void log(const std::string& message);
 // the master HWND and Present() each frame so DWM has a surface to thumbnail.
 
 // Per-webview Spout state (keyed by webviewId).
-struct SpoutWindowState {
+// SpoutDX sender is now managed by the transport module (SpoutOutput).
+// This struct retains the D3D device, swap chain, and HWND for DWM thumbnailing.
+struct FrameOutputHostState {
     HWND     hwnd   = nullptr; // master window HWND (for swap chain DWM thumbnailing)
     int      width  = 0;
     int      height = 0;
-    spoutDX* sender = nullptr; // SpoutDX instance
-    bool     active = false;   // true once startSpoutSender() succeeds
+    bool     active = false;   // true while any transport outputs are running
 
-    ID3D11Device*        d3dDevice  = nullptr; // D3D11 device for SpoutDX + swap chain
+    ID3D11Device*        d3dDevice  = nullptr; // D3D11 device for shared texture + swap chain
     ID3D11DeviceContext* d3dContext = nullptr; // immediate context for CopyResource
     IDXGISwapChain1*     swapChain  = nullptr; // swap chain on master HWND for DWM
 };
-static std::map<uint32_t, SpoutWindowState> g_spoutWindows; // webviewId → state
+static std::map<uint32_t, FrameOutputHostState> g_frameOutputHosts; // webviewId → state
 
 // ---------------------------------------------------------------------------
 // D3D output state — multi-window via direct GPU blit (no DWM thumbnails).
@@ -211,7 +216,7 @@ struct D3DOutputSlot {
     int               sourceW         = 0;
     int               sourceH         = 0;
 };
-// D3D output device and context live in SpoutWindowState (g_spoutWindows).
+// D3D output device and context live in FrameOutputHostState (g_frameOutputHosts).
 // D3DOutputState only tracks the NDW swap chain slots.
 struct D3DOutputState {
     std::vector<D3DOutputSlot> slots;
@@ -1595,7 +1600,7 @@ public:
     }
 
     // Associate this render handler with a webviewId so OnAcceleratedPaint can
-    // look up the corresponding SpoutWindowState entry in g_spoutWindows.
+    // look up the corresponding FrameOutputHostState entry in g_frameOutputHosts.
     void SetWindowId(uint32_t id) { window_id_ = id; }
 
     // CefRenderHandler methods
@@ -1624,13 +1629,15 @@ private:
     int view_width_;
     int view_height_;
     OSRWindow* osr_window_;
-    uint32_t window_id_; // webviewId — key into g_spoutWindows
+    uint32_t window_id_; // webviewId — key into g_frameOutputHosts
 
     IMPLEMENT_REFCOUNTING(ChromeyummRenderHandler);
 };
 
 // Forward declaration
 void handleApplicationMenuSelection(UINT menuId);
+static void suspendHotkeys();
+static void resumeHotkeys();
 
 // CEF Keyboard Handler for menu accelerators
 class ChromeyummKeyboardHandler : public CefKeyboardHandler {
@@ -1682,7 +1689,7 @@ public:
     }
 
     // Set the webviewId on the render handler so OnAcceleratedPaint can look up
-    // the SpoutWindowState.  Call after EnableOSR() and before browser creation.
+    // the FrameOutputHostState.  Call after EnableOSR() and before browser creation.
     void SetRenderHandlerWindowId(uint32_t id) {
         if (m_renderHandler) m_renderHandler->SetWindowId(id);
     }
@@ -2239,9 +2246,8 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
         return;
     }
 
-#if CHROMEYUMM_HAS_SPOUT
-    auto it = g_spoutWindows.find(window_id_);
-    if (it == g_spoutWindows.end()) return;
+    auto it = g_frameOutputHosts.find(window_id_);
+    if (it == g_frameOutputHosts.end()) return;
     auto& state = it->second;
     if (!state.active || !state.d3dDevice || !state.d3dContext) return;
 
@@ -2250,7 +2256,7 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
     // on the same adapter (and cross-adapter on WDDM 2.0+).
     ID3D11Device1* device1 = nullptr;
     state.d3dDevice->QueryInterface(__uuidof(ID3D11Device1), (void**)&device1);
-    if (!device1) { ::log("Spout OSR: ID3D11Device1 QI failed"); return; }
+    if (!device1) { ::log("OSR: ID3D11Device1 QI failed"); return; }
 
     ID3D11Texture2D* sharedTex = nullptr;
     HRESULT hr = device1->OpenSharedResource1(
@@ -2264,7 +2270,7 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
         if (!s_warnedOpen) {
             s_warnedOpen = true;
             char buf[32]; sprintf_s(buf, "%08X", (unsigned)hr);
-            ::log("Spout OSR: OpenSharedResource1 failed hr=0x" + std::string(buf) +
+            ::log("OSR: OpenSharedResource1 failed hr=0x" + std::string(buf) +
                   " — may be cross-adapter (Vulkan NVIDIA → D3D11 Intel)");
         }
         return;
@@ -2274,6 +2280,10 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
     // preventing stalls caused by DWM composition changes (taskbar hover,
     // focus loss, thumbnail generation).
     const UINT presentFlags = isTearingSupported() ? DXGI_PRESENT_ALLOW_TEARING : 0;
+
+    // 0. Transport outputs — GPU path (Spout) and CPU path (DDP, etc.).
+    // GPU outputs receive the shared texture directly; CPU outputs use staging readback.
+    chromeyumm::frame_output::ProcessSharedFrame(window_id_, state.d3dDevice, state.d3dContext, sharedTex);
 
     // 1. Blit to swap chain so DWM can thumbnail the master HWND for NDW display windows.
     if (state.swapChain) {
@@ -2285,14 +2295,8 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
         state.swapChain->Present(0, presentFlags);
     }
 
-    // 2. Send to Spout receivers (TouchDesigner, Resolume, etc.)
-    if (state.sender) {
-        state.sender->SendTexture(sharedTex);
-    }
-
-    // 3. D3D output mode — blit sub-regions to NativeDisplayWindow swap chains.
-    // Uses the same device and already-opened sharedTex from step 1 above.
-    // state.sender is null in D3D output mode; this block is a no-op in pure Spout mode.
+    // 2. D3D output mode — blit sub-regions to NativeDisplayWindow swap chains.
+    // This block is a no-op in pure Spout mode.
     {
         auto itD3D = g_d3dOutputStates.find(window_id_);
         if (itD3D != g_d3dOutputStates.end()) {
@@ -2421,7 +2425,6 @@ void ChromeyummRenderHandler::OnAcceleratedPaint(
     }
 
     sharedTex->Release();
-#endif
 }
 
 // Helper function implementation (defined after ChromeyummCefClient class)
@@ -5228,16 +5231,16 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
             // Use windowless (off-screen) rendering
             windowInfo.SetAsWindowless(hwnd);
         } else if (sharedTexture) {
-            // Spout output mode: OSR with shared_texture_enabled=1.
+            // Frame-output mode: OSR with shared_texture_enabled=1.
             // CEF renders off-screen and calls OnAcceleratedPaint each frame with a DXGI
             // NT shared texture handle from its GPU compositor. No DWM window capture (WGC)
             // is needed — WGC was found to throttle CEF from 60fps to 45-50fps by changing
             // DWM's composition mode. OnAcceleratedPaint has zero DWM overhead.
-            SpoutWindowState state;
+            FrameOutputHostState state;
             state.hwnd   = hwnd;
             state.width  = (int)width;
             state.height = (int)height;
-            g_spoutWindows[webviewId] = state;
+            g_frameOutputHosts[webviewId] = state;
 
             // Enable OSR render handler and wire up window id for OnAcceleratedPaint dispatch.
             client->EnableOSR((int)width, (int)height);
@@ -5544,7 +5547,12 @@ static DWORD WINAPI EventLoopThreadProc(LPVOID) {
     return 0;
 }
 
+static bool ensureFrameTransportHostRuntime(uint32_t webviewId);
+static void registerFrameTransportHostServices();
+
 CHROMEYUMM_EXPORT void initEventLoop(const char* identifier, const char* name, const char* channel) {
+    registerFrameTransportHostServices();
+
     if (identifier && identifier[0]) g_chromeyummIdentifier = std::string(identifier);
     if (name      && name[0])       g_chromeyummName       = std::string(name);
     if (channel   && channel[0])    g_chromeyummChannel    = std::string(channel);
@@ -6165,7 +6173,7 @@ CHROMEYUMM_EXPORT void hideWindow(void *window) {
         ShowWindow(hwnd, SW_HIDE);
         // Re-assert WasHidden(false) for any OSR browser whose host HWND this is,
         // so CEF keeps delivering OnAcceleratedPaint after the window is hidden.
-        for (auto& kv : g_spoutWindows) {
+        for (auto& kv : g_frameOutputHosts) {
             if (kv.second.hwnd == hwnd && kv.second.active) {
                 auto browser = findBrowserByWebviewId(kv.first);
                 if (browser) browser->GetHost()->WasHidden(false);
@@ -6602,7 +6610,9 @@ CHROMEYUMM_EXPORT void destroyNativeDisplayWindow(uint32_t displayWindowId) {
         }
         auto winIt = g_displayWindows.find(displayWindowId);
         if (winIt != g_displayWindows.end()) {
-            DestroyWindow(winIt->second);
+            HWND hwnd = winIt->second;
+            g_displayWindowInputMap.erase(hwnd);
+            DestroyWindow(hwnd);
             g_displayWindows.erase(winIt);
         }
     });
@@ -6741,67 +6751,19 @@ CHROMEYUMM_EXPORT void destroyMasterDimOverlay() {
 
 // Initialise D3D11 for D3D output mode.
 //
-// D3D output reuses the SpoutWindowState device path — the SAME code that
-// startSpoutSender uses — because OpenSharedResource1 in OnAcceleratedPaint
-// requires a device initialised through that path to reliably open the DXGI
-// NT shared handle from ANGLE. A freshly created independent device fails with
-// DXGI_ERROR_DEVICE_REMOVED (0x887A0005) on the first OpenSharedResource1 call.
+// Delegates device/swap-chain creation to ensureFrameTransportHostRuntime, which is the
+// single initialisation path for the FrameOutputHostState D3D device. OpenSharedResource1
+// in OnAcceleratedPaint requires a device created through that path to reliably open the
+// DXGI NT shared handle from ANGLE — a freshly created independent device fails with
+// DXGI_ERROR_DEVICE_REMOVED (0x887A0005).
 //
-// The BrowserWindow must have been created with spout:true (OSR mode).
+// The BrowserWindow must have been created with frameOutput:true (OSR mode).
 // Then call addD3DOutputSlot() for each NativeDisplayWindow.
 CHROMEYUMM_EXPORT bool startD3DOutput(uint32_t webviewId) {
-    auto it = g_spoutWindows.find(webviewId);
-    if (it == g_spoutWindows.end()) {
-        ::log("D3DOutput: no SpoutWindowState for webviewId " + std::to_string(webviewId) +
-              " (did you create the BrowserWindow with spout:true?)");
-        return false;
-    }
-    auto& state = it->second;
-    if (!state.active) {
-        // No Spout sender active — create our own D3D11 device for NDW blitting.
-        D3D_FEATURE_LEVEL featureLevel;
-        ID3D11DeviceContext* context = nullptr;
-        HRESULT hr = D3D11CreateDevice(
-            nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
-            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-            nullptr, 0, D3D11_SDK_VERSION,
-            &state.d3dDevice, &featureLevel, &context);
-        if (FAILED(hr)) {
-            char buf[16]; sprintf_s(buf, "%08X", (UINT)hr);
-            ::log("D3DOutput: D3D11CreateDevice failed hr=0x" + std::string(buf));
-            return false;
-        }
-        state.d3dContext = context;
+    if (!ensureFrameTransportHostRuntime(webviewId)) return false;
 
-        // Create swap chain on master HWND for DWM surface (same as startSpoutSender).
-        state.swapChain = createSwapChainForHwnd(state.d3dDevice, state.hwnd, state.width, state.height);
-
-        // Mark active — OnAcceleratedPaint will now open sharedTex and execute the D3D output block.
-        // state.sender is null, so SendTexture is skipped.
-        state.active = true;
-
-        // Log which GPU was selected.
-        IDXGIDevice* dxgiDev = nullptr;
-        if (SUCCEEDED(state.d3dDevice->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDev))) {
-            IDXGIAdapter* adapter = nullptr;
-            if (SUCCEEDED(dxgiDev->GetAdapter(&adapter))) {
-                DXGI_ADAPTER_DESC desc = {};
-                adapter->GetDesc(&desc);
-                char name128[128] = {};
-                WideCharToMultiByte(CP_ACP, 0, desc.Description, -1, name128, sizeof(name128), nullptr, nullptr);
-                ::log("D3DOutput: D3D11 device on: " + std::string(name128));
-                adapter->Release();
-            }
-            dxgiDev->Release();
-        }
-    } else {
-        // Spout sender already initialized the D3D device — reuse it for NDW blitting.
-        // state.sender != nullptr confirms this is the Spout coexistence path (not an unexpected double-call).
-        if (state.sender)
-            ::log("D3DOutput: reusing Spout D3D11 device for webviewId " + std::to_string(webviewId));
-        else
-            ::log("D3DOutput: startD3DOutput called while already active (unexpected) — reinitializing slot list only");
-    }
+    if (chromeyumm::frame_output::HasOutputs(webviewId))
+        ::log("D3DOutput: D3D11 device shared with active transport output(s) for webviewId " + std::to_string(webviewId));
 
     // Tell CEF to keep rendering even when the host HWND is hidden.
     // Without this, ShowWindow(SW_HIDE) on the master HWND causes CEF's compositor
@@ -6822,9 +6784,9 @@ CHROMEYUMM_EXPORT bool startD3DOutput(uint32_t webviewId) {
 // Must be called after startD3DOutput() and createNativeDisplayWindow().
 CHROMEYUMM_EXPORT bool addD3DOutputSlot(uint32_t webviewId, uint32_t displayWindowId,
                                          int srcX, int srcY, int srcW, int srcH) {
-    // Get the D3D11 device from the SpoutWindowState (populated by startD3DOutput).
-    auto spoutIt = g_spoutWindows.find(webviewId);
-    if (spoutIt == g_spoutWindows.end() || !spoutIt->second.d3dDevice) {
+    // Get the D3D11 device from the FrameOutputHostState (populated by startD3DOutput).
+    auto spoutIt = g_frameOutputHosts.find(webviewId);
+    if (spoutIt == g_frameOutputHosts.end() || !spoutIt->second.d3dDevice) {
         ::log("D3DOutput: no D3D11 device for webviewId " + std::to_string(webviewId));
         return false;
     }
@@ -6888,7 +6850,7 @@ CHROMEYUMM_EXPORT void enableDisplayWindowInput(
     }
 }
 
-// Stop D3D output, release all NDW swap chains, and tear down the SpoutWindowState device.
+// Stop D3D output, release all NDW swap chains, and tear down the FrameOutputHostState device.
 CHROMEYUMM_EXPORT void stopD3DOutput(uint32_t webviewId) {
     // Release NDW swap chains.
     auto itD3D = g_d3dOutputStates.find(webviewId);
@@ -6899,102 +6861,52 @@ CHROMEYUMM_EXPORT void stopD3DOutput(uint32_t webviewId) {
         g_d3dOutputStates.erase(itD3D);
     }
 
-    // Release the SpoutWindowState device, but only if Spout is NOT also active.
-    // When both Spout and D3D output are running, Spout owns state.d3dDevice/swapChain/context
-    // and will release them when stopSpoutSender is called. Releasing here would invalidate
-    // the Spout sender mid-session.
-    auto spoutIt = g_spoutWindows.find(webviewId);
-    if (spoutIt != g_spoutWindows.end()) {
+    // Release the FrameOutputHostState device, but only if no transport outputs are active.
+    // When transport outputs (Spout, DDP) are running, they depend on state.d3dDevice.
+    auto spoutIt = g_frameOutputHosts.find(webviewId);
+    if (spoutIt != g_frameOutputHosts.end()) {
         auto& state = spoutIt->second;
-        state.active = false;
-        if (!state.sender) {
-            // D3D-output-only mode: we own the device, release it.
+        const bool hasFrameOutputs = chromeyumm::frame_output::HasOutputs(webviewId);
+        state.active = hasFrameOutputs;
+        if (!hasFrameOutputs) {
+            // No transport outputs — we own the device, release it.
             if (state.swapChain) { state.swapChain->Release(); state.swapChain = nullptr; }
             if (state.d3dContext) { state.d3dContext->Release(); state.d3dContext = nullptr; }
             if (state.d3dDevice)  { state.d3dDevice->Release();  state.d3dDevice  = nullptr; }
         }
-        // else: Spout owns the device; stopSpoutSender will release it.
     }
 
     ::log("D3DOutput: stopped for webviewId " + std::to_string(webviewId));
 }
 
 // ---------------------------------------------------------------------------
-// Spout GPU texture sender API
+// Native frame output API (isolated module)
 // ---------------------------------------------------------------------------
 
-// Start sending the browser's rendered content as a Spout sender.
-// The browser must have been created with spout:true (OSR mode + shared_texture_enabled=1).
-// OnAcceleratedPaint delivers each frame's DXGI NT shared texture handle; this function
-// initialises D3D11 + SpoutDX so OnAcceleratedPaint can forward frames immediately.
-// webviewId: the webviewId of the BrowserWindow created with spout:true.
-// senderName: Spout sender name visible to receivers (TouchDesigner, Resolume, etc.).
-// Returns true if the sender was successfully started.
-CHROMEYUMM_EXPORT bool startSpoutSender(uint32_t webviewId, const char* senderName) {
-    auto it = g_spoutWindows.find(webviewId);
-    if (it == g_spoutWindows.end()) {
-        ::log("Spout: no state for webviewId " + std::to_string(webviewId));
-        ::log("  (Did you create the BrowserWindow with spout:true?)");
+static bool ensureFrameTransportHostRuntime(uint32_t webviewId) {
+    auto it = g_frameOutputHosts.find(webviewId);
+    if (it == g_frameOutputHosts.end()) {
+        ::log("FrameTransport: no FrameOutputHostState for webviewId " + std::to_string(webviewId) +
+              " (did you create the BrowserWindow with frameOutput:true?)");
         return false;
     }
     auto& state = it->second;
+    if (!state.active) {
+        D3D_FEATURE_LEVEL featureLevel;
+        ID3D11DeviceContext* context = nullptr;
+        HRESULT hr = D3D11CreateDevice(
+            nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+            nullptr, 0, D3D11_SDK_VERSION,
+            &state.d3dDevice, &featureLevel, &context);
+        if (FAILED(hr)) {
+            char buf[16]; sprintf_s(buf, "%08X", (UINT)hr);
+            ::log("FrameTransport: D3D11CreateDevice failed hr=0x" + std::string(buf));
+            return false;
+        }
+        state.d3dContext = context;
 
-    if (!state.hwnd || !IsWindow(state.hwnd)) {
-        ::log("Spout: invalid HWND for webviewId " + std::to_string(webviewId));
-        return false;
-    }
-
-#if CHROMEYUMM_HAS_SPOUT
-    // Create the D3D11 device. OnAcceleratedPaint uses this to open the DXGI NT shared
-    // handle that CEF's GPU compositor writes each frame to (OpenSharedResource1).
-    D3D_FEATURE_LEVEL featureLevel;
-    ID3D11DeviceContext* context = nullptr;
-    HRESULT hr = D3D11CreateDevice(
-        nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
-        D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-        nullptr, 0, D3D11_SDK_VERSION,
-        &state.d3dDevice, &featureLevel, &context);
-    if (FAILED(hr)) {
-        auto fmtHr = [hr]{ char buf[16]; sprintf_s(buf, "%08X", (UINT)hr); return std::string(buf); };
-        ::log("Spout: D3D11CreateDevice failed hr=0x" + fmtHr());
-        return false;
-    }
-    state.d3dContext = context;
-
-    // Create a DXGI swap chain on the master HWND for DWM thumbnailing.
-    // In OSR mode CEF doesn't present to the HWND; we Present() from OnAcceleratedPaint
-    // so the NativeDisplayWindow DWM thumbnails keep working.
-    state.swapChain = createSwapChainForHwnd(state.d3dDevice, state.hwnd, state.width, state.height);
-    if (!state.swapChain) {
-        ::log("Spout: warning — swap chain creation failed; DWM thumbnails may be blank");
-        // Non-fatal: Spout still works, NDW mirrors just won't show content.
-    }
-
-    // Initialise SpoutDX on the same D3D11 device so SendTexture works without a copy.
-    const char* name = senderName ? senderName : "ChromeyummSpout";
-    state.sender = new spoutDX();
-    if (!state.sender->OpenDirectX11(state.d3dDevice)) {
-        ::log("Spout: OpenDirectX11 failed");
-        delete state.sender; state.sender = nullptr;
-        if (state.swapChain) { state.swapChain->Release(); state.swapChain = nullptr; }
-        state.d3dContext->Release(); state.d3dContext = nullptr;
-        state.d3dDevice->Release(); state.d3dDevice = nullptr;
-        return false;
-    }
-    if (!state.sender->SetSenderName(name)) {
-        ::log("Spout: SetSenderName failed");
-        delete state.sender; state.sender = nullptr;
-        if (state.swapChain) { state.swapChain->Release(); state.swapChain = nullptr; }
-        state.d3dContext->Release(); state.d3dContext = nullptr;
-        state.d3dDevice->Release(); state.d3dDevice = nullptr;
-        return false;
-    }
-
-    // Mark active — OnAcceleratedPaint will start forwarding frames immediately.
-    state.active = true;
-
-    // Log D3D11 adapter name so we know which GPU is being used for SpoutDX.
-    {
+        // Log which GPU was selected — useful for diagnosing cross-adapter issues.
         IDXGIDevice* dxgiDev = nullptr;
         if (SUCCEEDED(state.d3dDevice->QueryInterface(__uuidof(IDXGIDevice), (void**)&dxgiDev))) {
             IDXGIAdapter* adapter = nullptr;
@@ -7003,43 +6915,53 @@ CHROMEYUMM_EXPORT bool startSpoutSender(uint32_t webviewId, const char* senderNa
                 adapter->GetDesc(&desc);
                 char name128[128] = {};
                 WideCharToMultiByte(CP_ACP, 0, desc.Description, -1, name128, sizeof(name128), nullptr, nullptr);
-                ::log("Spout D3D11 device on: " + std::string(name128));
+                ::log("FrameTransport: D3D11 device on: " + std::string(name128));
                 adapter->Release();
             }
             dxgiDev->Release();
         }
+
+        // Create swap chain on master HWND for DWM thumbnail surface when available.
+        state.swapChain = createSwapChainForHwnd(state.d3dDevice, state.hwnd, state.width, state.height);
+        state.active = true;
     }
 
-    ::log("Spout OSR sender started: " + std::string(name));
     return true;
-#else
-    (void)senderName;
-    ::log("Spout: built without SpoutDX headers — Spout output not available");
-    return false;
-#endif
 }
 
-// Stop the Spout sender for the given webviewId.
-CHROMEYUMM_EXPORT void stopSpoutSender(uint32_t webviewId) {
-    auto it = g_spoutWindows.find(webviewId);
-    if (it == g_spoutWindows.end()) return;
-    auto& state = it->second;
+static ID3D11Device* getFrameOutputHostDevice(uint32_t webviewId) {
+    auto it = g_frameOutputHosts.find(webviewId);
+    if (it == g_frameOutputHosts.end()) return nullptr;
+    return it->second.d3dDevice;
+}
 
-    // Disable first so OnAcceleratedPaint stops forwarding frames.
-    state.active = false;
-
-#if CHROMEYUMM_HAS_SPOUT
-    if (state.sender) {
-        state.sender->ReleaseSender();
-        delete state.sender;
-        state.sender = nullptr;
+static void notifyFrameTransportOutputsStopped(uint32_t webviewId) {
+    auto itSpout = g_frameOutputHosts.find(webviewId);
+    if (itSpout != g_frameOutputHosts.end()) {
+        auto& state = itSpout->second;
+        // Check if any transport outputs (Spout, DDP) are still running.
+        const bool hasOutputs = chromeyumm::frame_output::HasOutputs(webviewId);
+        state.active = hasOutputs;
+        if (!hasOutputs) {
+            if (state.swapChain) { state.swapChain->Release(); state.swapChain = nullptr; }
+            if (state.d3dContext) { state.d3dContext->Release(); state.d3dContext = nullptr; }
+            if (state.d3dDevice)  { state.d3dDevice->Release(); state.d3dDevice = nullptr; }
+        }
     }
-    if (state.swapChain) { state.swapChain->Release(); state.swapChain = nullptr; }
-    if (state.d3dContext) { state.d3dContext->Release(); state.d3dContext = nullptr; }
-    if (state.d3dDevice)  { state.d3dDevice->Release();  state.d3dDevice  = nullptr; }
-#endif
+}
 
-    ::log("Spout OSR sender stopped for webviewId " + std::to_string(webviewId));
+static void wakeFrameTransportBrowser(uint32_t webviewId) {
+    auto browser = findBrowserByWebviewId(webviewId);
+    if (browser) browser->GetHost()->WasHidden(false);
+}
+
+static void registerFrameTransportHostServices() {
+    chromeyumm::frame_output::HostServices services{};
+    services.ensureHostRuntime    = ensureFrameTransportHostRuntime;
+    services.getHostDevice        = getFrameOutputHostDevice;
+    services.notifyOutputsStopped = notifyFrameTransportOutputsStopped;
+    services.wakeBrowser          = wakeFrameTransportBrowser;
+    chromeyumm::frame_output::SetHostServices(services);
 }
 
 // ---------------------------------------------------------------------------

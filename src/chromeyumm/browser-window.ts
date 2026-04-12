@@ -2,7 +2,7 @@
  * BrowserWindow — a top-level OS window with an embedded CEF webview.
  */
 
-import { type Pointer } from "bun:ffi";
+import { CString, type Pointer } from "bun:ffi";
 import { native, cs, windowNoopCallback, windowKeyCallback } from "./ffi.ts";
 import { Webview } from "./webview.ts";
 
@@ -118,6 +118,74 @@ export class BrowserWindow {
 
   stopD3DOutput() {
     native.symbols.stopD3DOutput(this.webviewId);
+  }
+
+  // ── Native DDP output ────────────────────────────────────────────────────
+
+  // clearExisting=true (default): replaces all DDP outputs for this webview.
+  // clearExisting=false: appends a new DDP output alongside any existing ones.
+  startDdpOutput(options: {
+    controllerAddress: string;
+    port?: number;
+    destinationId?: number;
+    pixelStart?: number;
+    srcX: number;
+    srcY: number;
+    srcW: number;
+    srcH: number;
+    zigZagRows?: boolean;
+    flipH?: boolean;
+    flipV?: boolean;
+    rotate?: 0 | 90 | 180 | 270;
+    clearExisting?: boolean;
+  }): boolean {
+    return !!native.symbols.startDdpOutput(
+      this.webviewId,
+      cs(options.controllerAddress),
+      options.port ?? 4048,
+      options.destinationId ?? 0x01,
+      options.pixelStart ?? 0,
+      options.srcX,
+      options.srcY,
+      options.srcW,
+      options.srcH,
+      options.zigZagRows ?? false,
+      options.flipH ?? false,
+      options.flipV ?? false,
+      options.rotate ?? 0,
+      options.clearExisting ?? true,
+    );
+  }
+
+  stopDdpOutput() {
+    native.symbols.stopDdpOutput(this.webviewId);
+  }
+
+  getDdpOutputStats(): {
+    webviewId: number;
+    active: boolean;
+    frameCounter: number;
+    outputCount: number;
+    outputs: Array<{
+      index: number;
+      framesReceived: number;
+      framesSent: number;
+      keepaliveFramesSent: number;
+      packetsSent: number;
+      bytesSent: number;
+      sendErrors: number;
+      lastSendTimeMs: number;
+    }>;
+  } | null {
+    try {
+      const raw = native.symbols.getDdpOutputStats(this.webviewId);
+      if (!raw) return null;
+      const text = new CString(raw).toString();
+      if (!text) return null;
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
   }
 
   static getById(id: number): BrowserWindow | undefined {

@@ -10,8 +10,7 @@
 Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).exe` and friends to `helperNames` in `src/app/index.ts` for the GPU-preference registry writes. Currently only `chromeyumm.exe` and `chromeyumm Helper.exe` are registered.
 
 ## Backlog
-- ~~CI build pipeline~~ → moved to Completed
-- DDP output to FPP from p5 example? 
+- DDP protocol polish: partial-update packetization (keepalive + stat counters done)
 - Crash/error logging to disk
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
 - Replace `RegisterHotKey` with window-level accelerators (`TranslateAccelerator` or `WM_KEYDOWN`) — current approach suspends/resumes hotkeys on focus change which works well, but window-level shortcuts would be architecturally cleaner
@@ -43,6 +42,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - Consolidated Debug Panel (merged `<slot-overlay>` into `<debug-panel>`, data-driven hotkeys, auto-injection, `window.__chromeyumm` state object)
 - Convert ELECTROBUN references to Chromeyumm — renamed C++ class names, macros, include guards, namespaces, JS bridge globals, and TS identifiers. Historical docs preserved.
 - D3D output frame pacing — batched CopySubresourceRegion + Flush + Present(0, ALLOW_TEARING) eliminates vsync stalls and DWM interference (taskbar hover stuttering)
+- Native DDP output (isolated module): added `native/frame-output/` architecture, DDP protocol implementation, `OnAcceleratedPaint` frame hook, and config-driven startup via `ddpOutput` / `ddpOutputs` in `display-config.json`
 
 ## Related
 
