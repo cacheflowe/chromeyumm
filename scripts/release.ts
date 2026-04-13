@@ -28,7 +28,6 @@ const PKG_PATH = join(ROOT, "package.json");
 
 // Files/dirs in dist/ to exclude from the release zip
 const EXCLUDE = new Set([
-  "views", // leftover dev views (served via dev server, not bundled)
   "app.js", // redundant — baked into chromeyumm.exe
   "app.log", // runtime log
   "debug-inject.js", // dev artifact

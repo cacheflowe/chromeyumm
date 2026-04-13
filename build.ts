@@ -304,6 +304,16 @@ async function copyRuntime() {
     copyFileSync(appIcon, join(DIST_DIR, "app.ico"));
     console.log("✓ App icon copied");
   }
+
+  // Copy static views (welcome page, feature-check) — excludes dev project views
+  // that require their own build step (p5, r3f, threejs, spout-demo, spout-video).
+  const viewsSrc = join(ROOT, "src", "views");
+  const staticViews = ["welcome", "feature-check"];
+  for (const view of staticViews) {
+    const src = join(viewsSrc, view);
+    if (existsSync(src)) copyDir(src, join(DIST_DIR, "views", view));
+  }
+  console.log("✓ Views copied");
 }
 
 console.log(`\nChromeyumm build  [${isDev ? "dev" : "release"}]`);

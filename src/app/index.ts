@@ -271,10 +271,22 @@ if (config?.spoutInput) {
 // ---------------------------------------------------------------------------
 
 if (!contentUrl) {
-  console.error(
-    "[chromeyumm] No contentUrl in display-config.json. Set it to your dev server URL (e.g. http://localhost:5173).",
-  );
-  process.exit(1);
+  // No contentUrl configured — show built-in welcome page with setup instructions.
+  const welcomeCandidates = [
+    join(dirname(process.execPath), "views", "welcome", "index.html"),
+    join(process.cwd(), "dist", "views", "welcome", "index.html"),
+    join(process.cwd(), "src", "views", "welcome", "index.html"),
+  ];
+  const welcomePath = welcomeCandidates.find((p) => existsSync(p));
+  if (welcomePath) {
+    contentUrl = "file:///" + welcomePath.replace(/\\/g, "/");
+    console.log("[chromeyumm] No contentUrl — showing welcome page");
+  } else {
+    console.error(
+      "[chromeyumm] No contentUrl in display-config.json and welcome page not found.",
+    );
+    process.exit(1);
+  }
 }
 const _baseUrl = contentUrl;
 const urlParams: string[] = [`totalWidth=${totalWidth}`, `totalHeight=${totalHeight}`];
