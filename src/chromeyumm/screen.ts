@@ -1,6 +1,5 @@
 /** Screen / display enumeration. */
 
-import { CString, type Pointer } from "bun:ffi";
 import { native } from "./ffi.ts";
 
 export interface Rectangle {
@@ -20,10 +19,11 @@ export interface Display {
 
 export const Screen = {
   getAllDisplays(): Display[] {
-    const ptr = native.symbols.getAllDisplays() as unknown as Pointer;
-    if (!ptr) return [];
+    const result = native.symbols.getAllDisplays();
+    if (!result) return [];
     try {
-      return JSON.parse(new CString(ptr).toString()) as Display[];
+      const str = typeof result === "string" ? result : String(result);
+      return JSON.parse(str) as Display[];
     } catch {
       return [];
     }

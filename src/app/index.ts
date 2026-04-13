@@ -175,8 +175,12 @@ if (featureCheckMode) {
   const SIMULATE = sorted.length < 2;
 
   if (SIMULATE) {
+    const primary = sorted[0] ?? Screen.getAllDisplays()[0];
+    if (!primary?.bounds) {
+      console.error("[chromeyumm] No displays detected — cannot enter simulation mode.");
+      process.exit(1);
+    }
     console.log("[chromeyumm] No display-config.json — one display detected, entering simulation mode.");
-    const primary = sorted[0]!;
     const W = primary.bounds.width;
     const H = primary.bounds.height;
     const simW = Math.floor(W / 2) - 20;
