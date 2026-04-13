@@ -588,7 +588,7 @@ function buildChromeyummState() {
 // Interactive mode
 // ---------------------------------------------------------------------------
 
-let interactiveMode = featureCheckMode || (config?.startInteractive ?? false);
+let interactiveMode = featureCheckMode || !config || (config?.startInteractive ?? false);
 
 if (useD3DOutput) {
   if (interactiveMode) {
