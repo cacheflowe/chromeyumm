@@ -116,6 +116,10 @@ See `docs/references/vendor-management.md` for the full procedure and API compat
 
 ### Release
 
+Steps:
+- [Optional] Run workflow on GitHub 
+- Run command: `bun run release:publish -- --bump patch`
+
 | Command | Description |
 |---|---|
 | `bun run release` | Build + package `release/chromeyumm-v{VERSION}-win-x64.zip` |

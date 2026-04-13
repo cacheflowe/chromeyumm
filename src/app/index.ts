@@ -282,9 +282,7 @@ if (!contentUrl) {
     contentUrl = "file:///" + welcomePath.replace(/\\/g, "/");
     console.log("[chromeyumm] No contentUrl — showing welcome page");
   } else {
-    console.error(
-      "[chromeyumm] No contentUrl in display-config.json and welcome page not found.",
-    );
+    console.error("[chromeyumm] No contentUrl in display-config.json and welcome page not found.");
     process.exit(1);
   }
 }

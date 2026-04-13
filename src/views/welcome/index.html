@@ -4,24 +4,45 @@
     <meta charset="UTF-8" />
     <title>Chromeyumm</title>
     <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
       body {
         background: #0d0e14;
         color: #c8c8c8;
-        font: 15px/1.7 -apple-system, 'Segoe UI', sans-serif;
+        font:
+          15px/1.7 -apple-system,
+          "Segoe UI",
+          sans-serif;
         padding: 48px 40px;
         max-width: 720px;
       }
-      h1 { color: #fff; font-size: 24px; margin-bottom: 8px; }
-      .subtitle { color: #888; font-size: 14px; margin-bottom: 32px; }
-      h2 { color: #fff; font-size: 16px; margin: 28px 0 10px; }
-      p { margin-bottom: 12px; }
+      h1 {
+        color: #fff;
+        font-size: 24px;
+        margin-bottom: 8px;
+      }
+      .subtitle {
+        color: #888;
+        font-size: 14px;
+        margin-bottom: 32px;
+      }
+      h2 {
+        color: #fff;
+        font-size: 16px;
+        margin: 28px 0 10px;
+      }
+      p {
+        margin-bottom: 12px;
+      }
       code {
         background: #1a1c24;
         color: #e8c87a;
         padding: 2px 6px;
         border-radius: 3px;
-        font-family: 'Cascadia Code', 'Consolas', monospace;
+        font-family: "Cascadia Code", "Consolas", monospace;
         font-size: 13px;
       }
       pre {
@@ -31,17 +52,38 @@
         border-radius: 6px;
         overflow-x: auto;
         margin: 12px 0 20px;
-        font: 13px/1.6 'Cascadia Code', 'Consolas', monospace;
+        font:
+          13px/1.6 "Cascadia Code",
+          "Consolas",
+          monospace;
         border: 1px solid #2a2d38;
       }
-      pre .key { color: #7ec8e3; }
-      pre .str { color: #a8d8a8; }
-      pre .num { color: #e8c87a; }
-      pre .comment { color: #666; }
-      ol { padding-left: 24px; margin-bottom: 20px; }
-      li { margin-bottom: 8px; }
-      a { color: #7ec8e3; text-decoration: none; }
-      a:hover { text-decoration: underline; }
+      pre .key {
+        color: #7ec8e3;
+      }
+      pre .str {
+        color: #a8d8a8;
+      }
+      pre .num {
+        color: #e8c87a;
+      }
+      pre .comment {
+        color: #666;
+      }
+      ol {
+        padding-left: 24px;
+        margin-bottom: 20px;
+      }
+      li {
+        margin-bottom: 8px;
+      }
+      a {
+        color: #7ec8e3;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
       .hint {
         background: #1a1c24;
         border-left: 3px solid #7ec8e3;
@@ -50,7 +92,9 @@
         font-size: 14px;
         color: #aaa;
       }
-      .hint strong { color: #c8c8c8; }
+      .hint strong {
+        color: #c8c8c8;
+      }
     </style>
   </head>
   <body>
@@ -58,8 +102,8 @@
     <p class="subtitle">Multi-display browser for live installations</p>
 
     <p>
-      No <code>display-config.json</code> found.
-      Create one in the same folder as <code>chromeyumm.exe</code> to configure your displays.
+      No <code>display-config.json</code> found. Create one in the same folder as <code>chromeyumm.exe</code> to
+      configure your displays.
     </p>
 
     <h2>Quick Start</h2>
@@ -71,7 +115,7 @@
     </ol>
 
     <h2>Minimal Config</h2>
-<pre>{
+    <pre>{
   <span class="key">"contentUrl"</span>: <span class="str">"https://your-content-url.com"</span>,
   <span class="key">"windows"</span>: [
     {
@@ -82,13 +126,12 @@
 }</pre>
 
     <div class="hint">
-      <strong>Tip:</strong> Use a local HTML file by setting <code>contentUrl</code> to a relative path
-      like <code>"views/feature-check/index.html"</code>, or a dev server URL like
-      <code>"http://localhost:5173"</code>.
+      <strong>Tip:</strong> Use a local HTML file by setting <code>contentUrl</code> to a relative path like
+      <code>"views/feature-check/index.html"</code>, or a dev server URL like <code>"http://localhost:5173"</code>.
     </div>
 
     <h2>Multi-Display Example</h2>
-<pre>{
+    <pre>{
   <span class="key">"contentUrl"</span>: <span class="str">"http://localhost:5173"</span>,
   <span class="key">"fullscreen"</span>: <span class="num">true</span>,
   <span class="key">"windows"</span>: [
@@ -104,17 +147,15 @@
 }</pre>
 
     <h2>Bundled Examples</h2>
-    <p>
-      Set <code>contentUrl</code> to any of these local pages:
-    </p>
-    <ul style="padding-left: 24px; margin-bottom: 20px;">
+    <p>Set <code>contentUrl</code> to any of these local pages:</p>
+    <ul style="padding-left: 24px; margin-bottom: 20px">
       <li><code>views/feature-check/index.html</code> — GPU &amp; codec diagnostics</li>
       <li><code>views/threejs/index.html</code> — Three.js demo</li>
       <li><code>views/p5/index.html</code> — p5.js demo</li>
     </ul>
 
     <h2>Options</h2>
-<pre>{
+    <pre>{
   <span class="key">"fullscreen"</span>: <span class="num">true</span>,          <span class="comment">// borderless fullscreen windows</span>
   <span class="key">"alwaysOnTop"</span>: <span class="num">true</span>,         <span class="comment">// keep windows above other apps</span>
   <span class="key">"virtualCanvas"</span>: {           <span class="comment">// override auto-calculated canvas</span>
@@ -127,13 +168,13 @@
 }</pre>
 
     <h2>Hotkeys</h2>
-    <ul style="padding-left: 24px; margin-bottom: 20px;">
+    <ul style="padding-left: 24px; margin-bottom: 20px">
       <li><code>Ctrl+Shift+D</code> — Toggle debug panel</li>
       <li><code>Ctrl+Shift+R</code> — Reload content</li>
       <li><code>Ctrl+Shift+Q</code> — Quit</li>
     </ul>
 
-    <p style="margin-top: 32px; color: #555; font-size: 13px;">
+    <p style="margin-top: 32px; color: #555; font-size: 13px">
       <a href="https://github.com/cacheflowe/chromeyumm">github.com/cacheflowe/chromeyumm</a>
     </p>
   </body>
