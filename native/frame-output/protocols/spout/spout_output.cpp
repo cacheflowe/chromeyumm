@@ -1,8 +1,8 @@
 // SpoutOutput — GPU-native output protocol for SpoutDX texture sharing.
 // Conditionally compiled: when SpoutDX headers are absent, Start() returns false.
 
-#if __has_include("vendor/spout/include/SpoutDX/SpoutDX.h")
-#include "vendor/spout/include/SpoutDX/SpoutDX.h"
+#if __has_include("SpoutDX.h")
+#include "SpoutDX.h"
 #define CHROMEYUMM_HAS_SPOUT_OUTPUT 1
 #else
 class spoutDX;

@@ -19,6 +19,14 @@ export const native = (() => {
   const inDist = join(process.cwd(), "dist", "libNativeWrapper.dll");
   const inCwd = join(process.cwd(), "libNativeWrapper.dll");
   const dllPath = existsSync(nextToExe) ? nextToExe : existsSync(inDist) ? inDist : inCwd;
+
+  // Ensure the DLL's directory is on PATH so Windows can resolve transitive
+  // dependencies (libcef.dll etc.) that live next to it.
+  const dllDir = dirname(dllPath);
+  if (!process.env.PATH?.includes(dllDir)) {
+    process.env.PATH = dllDir + ";" + (process.env.PATH ?? "");
+  }
+
   try {
     return dlopen(dllPath, {
       // ── Window ──────────────────────────────────────────────────────────
@@ -117,20 +125,20 @@ export const native = (() => {
       // clearExisting=true replaces all DDP outputs; false appends a new one.
       startDdpOutput: {
         args: [
-          FFIType.u32,     // webviewId
+          FFIType.u32, // webviewId
           FFIType.cstring, // controllerAddress
-          FFIType.u16,     // port
-          FFIType.u8,      // destinationId
-          FFIType.i32,     // pixelStart
-          FFIType.i32,     // srcX
-          FFIType.i32,     // srcY
-          FFIType.i32,     // srcW
-          FFIType.i32,     // srcH
-          FFIType.bool,    // zigZagRows
-          FFIType.bool,    // flipH
-          FFIType.bool,    // flipV
-          FFIType.i32,     // rotate (0, 90, 180, 270)
-          FFIType.bool,    // clearExisting
+          FFIType.u16, // port
+          FFIType.u8, // destinationId
+          FFIType.i32, // pixelStart
+          FFIType.i32, // srcX
+          FFIType.i32, // srcY
+          FFIType.i32, // srcW
+          FFIType.i32, // srcH
+          FFIType.bool, // zigZagRows
+          FFIType.bool, // flipH
+          FFIType.bool, // flipV
+          FFIType.i32, // rotate (0, 90, 180, 270)
+          FFIType.bool, // clearExisting
         ],
         returns: FFIType.bool,
       },

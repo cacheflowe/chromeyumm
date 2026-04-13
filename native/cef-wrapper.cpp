@@ -81,11 +81,11 @@ using namespace chromeyumm;
 #pragma pop_macro("GetFirstChild")
 #pragma pop_macro("GetNextSibling")
 
-// Spout2 texture sharing — uses SpoutDX (D3D11-native), statically linked.
-// SDK layout (from the Spout2 CMake release package):
-//   include/SpoutDX/SpoutDX.h + companion headers  — D3D11-native sender/receiver class
-//   MT/lib/SpoutDX_static.lib                       — static lib (matches /MT compile flag)
-// SpoutDX::SendTexture(ID3D11Texture2D*) sends a GPU texture directly to Spout receivers.
+// Spout2 texture sharing — uses SpoutDX (D3D11-native), compiled from source.
+// Vendor layout (from setup-vendors.ts, Spout2 source archive):
+//   SpoutDX/SpoutDX.h + SpoutDX.cpp  — D3D11-native sender/receiver class
+//   SpoutGL/*.h + *.cpp              — core library (SpoutDirectX, SpoutUtils, etc.)
+// Compiled without SPOUT_BUILD_DLL so no __declspec(dllexport) leaks into our DLL.
 // CEF's OnAcceleratedPaint delivers a DXGI NT shared texture handle every frame (OSR mode,
 // shared_texture_enabled=1). We open that handle and pass it to the frame-output transport layer.
 // No window capture (WGC) needed — zero DWM overhead, browser renders at full speed.
@@ -96,8 +96,8 @@ using namespace chromeyumm;
 #include <d3d11_1.h>    // ID3D11Device1::OpenSharedResource1 (DXGI NT handles)
 #include <dxgi1_5.h>    // IDXGIFactory5 (tearing support), IDXGISwapChain1 (flip swap chain)
 
-#if __has_include("vendor/spout/include/SpoutDX/SpoutDX.h")
-#include "vendor/spout/include/SpoutDX/SpoutDX.h"
+#if __has_include("SpoutDX.h")
+#include "SpoutDX.h"
 #define CHROMEYUMM_HAS_SPOUT 1
 #else
 // SpoutDX not found — forward-declare stub so SpoutInputState compiles.
@@ -123,7 +123,7 @@ class spoutDX;
 
 
 // Ensure the exported functions have appropriate visibility
-#define CHROMEYUMM_EXPORT __declspec(dllexport)
+#define CHROMEYUMM_EXPORT
 #define WM_EXECUTE_SYNC_BLOCK (WM_USER + 1)
 #define WM_EXECUTE_ASYNC_BLOCK (WM_USER + 2)
 #define WM_DEVTOOLS_CREATE (WM_USER + 3)

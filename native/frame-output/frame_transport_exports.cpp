@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-#define CHROMEYUMM_EXPORT __declspec(dllexport)
+#define CHROMEYUMM_EXPORT
 void log(const std::string& message);
 
 extern "C" {

@@ -112,10 +112,18 @@ async function buildNative() {
     "Release",
     "libcef_dll_wrapper.lib",
   );
-  const spoutLib = join(NATIVE_DIR, "vendor", "spout", "MT", "lib", "SpoutDX_static.lib");
+
+  // Spout: compiled from source (no prebuilt static lib).
+  // The prebuilt SpoutDX_static.lib was compiled with SPOUT_BUILD_DLL, which baked
+  // __declspec(dllexport) into every symbol, leaking 315+ C++ exports into our DLL
+  // and causing Bun's dlopen to fail with ERROR_INVALID_ORDINAL (182).
+  // Compiling from source without SPOUT_BUILD_DLL keeps SPOUT_DLLEXP empty → no leak.
+  const spoutGLDir = join(NATIVE_DIR, "vendor", "spout", "SpoutGL");
+  const spoutDXDir = join(NATIVE_DIR, "vendor", "spout", "SpoutDX");
 
   if (!existsSync(cefLib)) throw new Error(`CEF lib not found: ${cefLib}\nSee native/README.md for vendor setup.`);
-  if (!existsSync(spoutLib)) throw new Error(`Spout lib not found: ${spoutLib}\nRun: bun scripts/setup-vendors.ts`);
+  if (!existsSync(join(spoutDXDir, "SpoutDX.cpp")))
+    throw new Error(`Spout source not found: ${spoutDXDir}\nRun: bun scripts/setup-vendors.ts`);
 
   const obj = join(NATIVE_DIR, "build", "cef-wrapper.obj");
   const frameTransportRuntimeObj = join(NATIVE_DIR, "build", "frame-transport-runtime.obj");
@@ -128,10 +136,28 @@ async function buildNative() {
   const helperExe = join(NATIVE_DIR, "build", "chromeyumm Helper.exe");
 
   // Compile DLL — all translation units are independent, build in parallel.
+  // Spout source files are compiled with the default SPOUT_DLLEXP (empty) because
+  // SPOUT_BUILD_DLL is not defined. This avoids __declspec(dllexport) on Spout symbols.
+  const spoutIncludes = ` /I"${spoutGLDir}" /I"${spoutDXDir}"`;
+  const spoutCompileFlags = `/c /EHsc /std:c++17 /DNOMINMAX /MT` + spoutIncludes;
+
+  // Spout source → .obj names
+  const spoutObjs = {
+    spoutDX: join(NATIVE_DIR, "build", "SpoutDX.obj"),
+    spoutDirectX: join(NATIVE_DIR, "build", "SpoutDirectX.obj"),
+    spoutSenderNames: join(NATIVE_DIR, "build", "SpoutSenderNames.obj"),
+    spoutFrameCount: join(NATIVE_DIR, "build", "SpoutFrameCount.obj"),
+    spoutCopy: join(NATIVE_DIR, "build", "SpoutCopy.obj"),
+    spoutUtils: join(NATIVE_DIR, "build", "SpoutUtils.obj"),
+    spoutSharedMemory: join(NATIVE_DIR, "build", "SpoutSharedMemory.obj"),
+  };
+
   await Promise.all([
+    // Our code
     runMsvc(
       `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
         ` /I"${cefInclude}"` +
+        spoutIncludes +
         ` /D_USRDLL /D_WINDLL` +
         ` /Fo"${obj}" "${join(NATIVE_DIR, "cef-wrapper.cpp")}"`,
     ),
@@ -159,19 +185,38 @@ async function buildNative() {
       `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
         ` /I"${cefInclude}"` +
         ` /I"${NATIVE_DIR}"` +
-        ` /I"${join(NATIVE_DIR, "vendor", "spout", "include", "SpoutDX")}"` +
-        ` /I"${join(NATIVE_DIR, "vendor", "spout", "include", "SpoutGL")}"` +
+        spoutIncludes +
         ` /Fo"${spoutOutputObj}" "${join(NATIVE_DIR, "frame-output", "protocols", "spout", "spout_output.cpp")}"`,
+    ),
+    // Spout source files (compiled as C++17 — Spout doesn't need C++20)
+    runMsvc(`cl ${spoutCompileFlags} /Fo"${spoutObjs.spoutDX}" "${join(spoutDXDir, "SpoutDX.cpp")}"`),
+    runMsvc(`cl ${spoutCompileFlags} /Fo"${spoutObjs.spoutDirectX}" "${join(spoutGLDir, "SpoutDirectX.cpp")}"`),
+    runMsvc(`cl ${spoutCompileFlags} /Fo"${spoutObjs.spoutSenderNames}" "${join(spoutGLDir, "SpoutSenderNames.cpp")}"`),
+    runMsvc(`cl ${spoutCompileFlags} /Fo"${spoutObjs.spoutFrameCount}" "${join(spoutGLDir, "SpoutFrameCount.cpp")}"`),
+    runMsvc(`cl ${spoutCompileFlags} /Fo"${spoutObjs.spoutCopy}" "${join(spoutGLDir, "SpoutCopy.cpp")}"`),
+    runMsvc(`cl ${spoutCompileFlags} /Fo"${spoutObjs.spoutUtils}" "${join(spoutGLDir, "SpoutUtils.cpp")}"`),
+    runMsvc(
+      `cl ${spoutCompileFlags} /Fo"${spoutObjs.spoutSharedMemory}" "${join(spoutGLDir, "SpoutSharedMemory.cpp")}"`,
     ),
   ]);
 
+  const defFile = join(NATIVE_DIR, "exports.def");
+  const spoutObjList = Object.values(spoutObjs)
+    .map((o) => `"${o}"`)
+    .join(" ");
   await runMsvc(
-    `link /DLL /OUT:"${dll}"` +
+    `link /DLL /OUT:"${dll}" /DEF:"${defFile}"` +
       ` user32.lib ole32.lib shell32.lib shlwapi.lib advapi32.lib dcomp.lib d2d1.lib` +
       ` dwmapi.lib d3d11.lib dxgi.lib kernel32.lib comctl32.lib delayimp.lib libcmt.lib` +
       ` "${cefLib}" "${cefWrapper}" /DELAYLOAD:libcef.dll` +
-      ` "${spoutLib}" "${obj}" "${frameTransportRuntimeObj}" "${frameTransportExportsObj}" "${frameOutputManagerObj}" "${ddpOutputObj}" "${spoutOutputObj}"`,
+      ` ${spoutObjList} "${obj}" "${frameTransportRuntimeObj}" "${frameTransportExportsObj}" "${frameOutputManagerObj}" "${ddpOutputObj}" "${spoutOutputObj}"`,
   );
+
+  // Embed the manifest so COMCTL32 v6 activation context resolves at load time
+  const manifest = join(NATIVE_DIR, "build", "libNativeWrapper.dll.manifest");
+  if (existsSync(manifest)) {
+    await runMsvc(`mt -nologo -manifest "${manifest}" -outputresource:"${dll}";2`);
+  }
   console.log(`✓ DLL: ${dll}`);
 
   // Compile CEF subprocess helper exe

@@ -329,12 +329,12 @@ async function setupSpout() {
   const tmpDir = join(ROOT, "_vendor_tmp");
   mkdirSync(tmpDir, { recursive: true });
 
-  // Spout2 publishes prebuilt SDK binaries as a release asset.
-  // URL format: https://github.com/leadedge/Spout2/releases/download/TAG/Spout-SDK-binaries_TAG_DASHED.zip
-  // The archive contains: Spout-SDK-binaries_TAG_DASHED/TAG_DASHED/Libs/{include,x64}/{...}
-  const tagDashed = spoutTag.replace(/\./g, "-");
-  const zipFilename = `Spout-SDK-binaries_${tagDashed}.zip`;
-  const zipUrl = `https://github.com/leadedge/Spout2/releases/download/${spoutTag}/${zipFilename}`;
+  // Download Spout2 SOURCE archive (not prebuilt binaries).
+  // We compile the .cpp files ourselves so no __declspec(dllexport) leaks into
+  // our DLL — the prebuilt static lib was compiled with SPOUT_BUILD_DLL which
+  // baked in dllexport directives that caused Bun's dlopen to fail (ERROR 182).
+  const zipFilename = `Spout2-${spoutTag}.zip`;
+  const zipUrl = `https://github.com/leadedge/Spout2/archive/refs/tags/${spoutTag}.zip`;
   const zipPath = join(tmpDir, zipFilename);
 
   if (existsSync(zipPath)) {
@@ -354,32 +354,42 @@ async function setupSpout() {
     throw new Error(`Failed to extract Spout archive.\n${tarResult.stderr.toString()}`);
   }
 
-  // Find extracted dir — binary release uses dashed tag: Spout-SDK-binaries_X-XXX-XXX/X-XXX-XXX/Libs/
-  const extracted = readdirSync(extractDir).find((d) => d.startsWith("Spout-SDK-binaries"));
-  if (!extracted) throw new Error("Spout extraction produced no Spout-SDK-binaries* directory");
-  const spoutExtracted = join(extractDir, extracted);
-
-  // Inside is a version-named folder with the Libs directory
-  const innerDirs = readdirSync(spoutExtracted);
-  const versionDir = innerDirs.find((d) => statSync(join(spoutExtracted, d)).isDirectory());
-  if (!versionDir) throw new Error("Spout SDK binaries archive has unexpected structure");
-  const libsDir = join(spoutExtracted, versionDir, "Libs");
+  // Source archive extracts to Spout2-TAG/SPOUTSDK/
+  const extracted = readdirSync(extractDir).find((d) => d.startsWith("Spout2-"));
+  if (!extracted) throw new Error("Spout extraction produced no Spout2-* directory");
+  const sdkDir = join(extractDir, extracted, "SPOUTSDK");
 
   // Replace vendor dir
   removeDir(spoutDir);
   mkdirSync(spoutDir, { recursive: true });
 
-  // Copy headers from Libs/include/
-  const includesSrc = join(libsDir, "include");
-  if (existsSync(includesSrc)) {
-    copyDirRecursive(includesSrc, join(spoutDir, "include"));
+  // Copy SpoutGL source (.h + .cpp) — core library
+  const spoutGLSrc = join(sdkDir, "SpoutGL");
+  const spoutGLDest = join(spoutDir, "SpoutGL");
+  mkdirSync(spoutGLDest, { recursive: true });
+  for (const entry of readdirSync(spoutGLSrc)) {
+    if (entry.endsWith(".h") || entry.endsWith(".cpp")) {
+      copyFileSync(join(spoutGLSrc, entry), join(spoutGLDest, entry));
+    }
   }
 
-  // The binary SDK's SpoutDX.h uses `#define PATH_PREFIX` which activates relative
-  // includes like "../../SpoutGL/SpoutCommon.h". That path doesn't resolve in our
-  // flat vendor layout. Patch the header to disable PATH_PREFIX so the #else branch
-  // with same-folder includes is used instead.
-  const spoutDxHeader = join(spoutDir, "include", "SpoutDX", "SpoutDX.h");
+  // Copy SpoutDX source (.h + .cpp) — DirectX 11 sender/receiver
+  const spoutDXSrc = join(sdkDir, "SpoutDirectX", "SpoutDX");
+  const spoutDXDest = join(spoutDir, "SpoutDX");
+  mkdirSync(spoutDXDest, { recursive: true });
+  for (const entry of readdirSync(spoutDXSrc)) {
+    if (entry.endsWith(".h") || entry.endsWith(".cpp")) {
+      copyFileSync(join(spoutDXSrc, entry), join(spoutDXDest, entry));
+    }
+  }
+
+  // Write version marker
+  writeFileSync(join(spoutDir, ".spout-version"), spoutTag + "\n");
+
+  // SpoutDX.h defines PATH_PREFIX which triggers `../../SpoutGL/` relative includes.
+  // Our flat vendor layout uses /I include paths instead, so disable PATH_PREFIX
+  // to use the bare #include "SpoutCommon.h" etc. branch.
+  const spoutDxHeader = join(spoutDXDest, "SpoutDX.h");
   if (existsSync(spoutDxHeader)) {
     let src = readFileSync(spoutDxHeader, "utf-8");
     if (src.includes("#define PATH_PREFIX")) {
@@ -389,26 +399,23 @@ async function setupSpout() {
     }
   }
 
-  // Copy MT and MD prebuilt binaries from Libs/x64/{MT,MD}/
-  for (const variant of ["MT", "MD"]) {
-    const src = join(libsDir, "x64", variant);
-    if (existsSync(src)) {
-      copyDirRecursive(src, join(spoutDir, variant));
-    }
-  }
+  console.log(`  ✓ Spout ${spoutTag} (source) ready at ${spoutDir}`);
 
-  // Write version marker
-  writeFileSync(join(spoutDir, ".spout-version"), spoutTag + "\n");
-  console.log(`  ✓ Spout ${spoutTag} ready at ${spoutDir}`);
-
-  // Verify the lib we actually need exists
-  const neededLib = join(spoutDir, "MT", "lib", "SpoutDX_static.lib");
-  if (existsSync(neededLib)) {
-    console.log(`  ✓ SpoutDX_static.lib (MT) found`);
+  // Verify key source files exist
+  const neededFiles = [
+    join(spoutDXDest, "SpoutDX.h"),
+    join(spoutDXDest, "SpoutDX.cpp"),
+    join(spoutGLDest, "SpoutDirectX.cpp"),
+    join(spoutGLDest, "SpoutCommon.h"),
+  ];
+  const allFound = neededFiles.every((f) => existsSync(f));
+  if (allFound) {
+    console.log(`  ✓ SpoutDX + SpoutGL source files found`);
   } else {
-    console.warn(`  ⚠ SpoutDX_static.lib (MT) NOT found — Spout output will be disabled in builds`);
-    console.warn(`    Expected: ${neededLib}`);
-    console.warn(`    The Spout2 release layout may have changed. Check the extracted contents.`);
+    console.warn(`  ⚠ Some Spout source files missing — check the archive structure.`);
+    for (const f of neededFiles) {
+      if (!existsSync(f)) console.warn(`    Missing: ${f}`);
+    }
   }
 
   // Cleanup
