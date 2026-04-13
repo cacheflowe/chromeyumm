@@ -2,7 +2,7 @@
  * BrowserWindow — a top-level OS window with an embedded CEF webview.
  */
 
-import { CString, type Pointer } from "bun:ffi";
+import { type Pointer } from "bun:ffi";
 import { native, cs, windowNoopCallback, windowKeyCallback } from "./ffi.ts";
 import { Webview } from "./webview.ts";
 
@@ -180,7 +180,7 @@ export class BrowserWindow {
     try {
       const raw = native.symbols.getDdpOutputStats(this.webviewId);
       if (!raw) return null;
-      const text = new CString(raw).toString();
+      const text = typeof raw === "string" ? raw : String(raw);
       if (!text) return null;
       return JSON.parse(text);
     } catch {

@@ -1,6 +1,5 @@
 /** Spout input receiver — Win32 shared-memory frame delivery to the browser. */
 
-import { CString, type Pointer } from "bun:ffi";
 import { native, cs } from "./ffi.ts";
 
 export const SpoutReceiver = {
@@ -21,9 +20,9 @@ export const SpoutReceiver = {
    * (e.g. "SpoutFrame_1"). The browser reads frames from this mapping.
    */
   getMappingName(receiverId: number): string {
-    const ptr = native.symbols.getSpoutReceiverMappingName(receiverId) as unknown as Pointer;
-    if (!ptr) return "";
-    return new CString(ptr).toString();
+    const result = native.symbols.getSpoutReceiverMappingName(receiverId);
+    if (!result) return "";
+    return typeof result === "string" ? result : String(result);
   },
 
   getSeq(receiverId: number): number {
