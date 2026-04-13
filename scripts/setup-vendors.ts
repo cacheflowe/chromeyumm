@@ -375,6 +375,15 @@ async function setupSpout() {
     copyDirRecursive(includesSrc, join(spoutDir, "include"));
   }
 
+  // The binary SDK's SpoutDX.h uses relative includes like "../../SpoutGL/SpoutCommon.h".
+  // From include/SpoutDX/, that resolves to spout/SpoutGL/ — but headers are at
+  // spout/include/SpoutGL/. Copy the folder so the relative path resolves.
+  const spoutGlLink = join(spoutDir, "SpoutGL");
+  const spoutGlTarget = join(spoutDir, "include", "SpoutGL");
+  if (!existsSync(spoutGlLink) && existsSync(spoutGlTarget)) {
+    copyDirRecursive(spoutGlTarget, spoutGlLink);
+  }
+
   // Copy MT and MD prebuilt binaries from Libs/x64/{MT,MD}/
   for (const variant of ["MT", "MD"]) {
     const src = join(libsDir, "x64", variant);
