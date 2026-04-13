@@ -375,13 +375,18 @@ async function setupSpout() {
     copyDirRecursive(includesSrc, join(spoutDir, "include"));
   }
 
-  // The binary SDK's SpoutDX.h uses relative includes like "../../SpoutGL/SpoutCommon.h".
-  // From include/SpoutDX/, that resolves to spout/SpoutGL/ — but headers are at
-  // spout/include/SpoutGL/. Copy the folder so the relative path resolves.
-  const spoutGlLink = join(spoutDir, "SpoutGL");
-  const spoutGlTarget = join(spoutDir, "include", "SpoutGL");
-  if (!existsSync(spoutGlLink) && existsSync(spoutGlTarget)) {
-    copyDirRecursive(spoutGlTarget, spoutGlLink);
+  // The binary SDK's SpoutDX.h uses `#define PATH_PREFIX` which activates relative
+  // includes like "../../SpoutGL/SpoutCommon.h". That path doesn't resolve in our
+  // flat vendor layout. Patch the header to disable PATH_PREFIX so the #else branch
+  // with same-folder includes is used instead.
+  const spoutDxHeader = join(spoutDir, "include", "SpoutDX", "SpoutDX.h");
+  if (existsSync(spoutDxHeader)) {
+    let src = readFileSync(spoutDxHeader, "utf-8");
+    if (src.includes("#define PATH_PREFIX")) {
+      src = src.replace("#define PATH_PREFIX", "// #define PATH_PREFIX  // patched by setup-vendors.ts");
+      writeFileSync(spoutDxHeader, src);
+      console.log("  ✓ Patched SpoutDX.h (disabled PATH_PREFIX for flat include layout)");
+    }
   }
 
   // Copy MT and MD prebuilt binaries from Libs/x64/{MT,MD}/

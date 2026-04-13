@@ -160,6 +160,7 @@ async function buildNative() {
         ` /I"${cefInclude}"` +
         ` /I"${NATIVE_DIR}"` +
         ` /I"${join(NATIVE_DIR, "vendor", "spout", "include", "SpoutDX")}"` +
+        ` /I"${join(NATIVE_DIR, "vendor", "spout", "include", "SpoutGL")}"` +
         ` /Fo"${spoutOutputObj}" "${join(NATIVE_DIR, "frame-output", "protocols", "spout", "spout_output.cpp")}"`,
     ),
   ]);
