@@ -285,6 +285,33 @@ if (!contentUrl) {
   if (welcomePath) {
     contentUrl = "file:///" + welcomePath.replace(/\\/g, "/");
     console.log("[chromeyumm] No contentUrl — showing welcome page");
+
+    // Welcome page gets a single centered window on the primary display
+    if (!config) {
+      const welcomeW = 900;
+      const welcomeH = 700;
+      const displays = Screen.getAllDisplays();
+      const primary = displays.find((d) => d.isPrimary) ?? displays[0];
+      const cx = primary ? primary.bounds.x + Math.floor((primary.bounds.width - welcomeW) / 2) : 100;
+      const cy = primary ? primary.bounds.y + Math.floor((primary.bounds.height - welcomeH) / 2) : 100;
+      totalWidth = welcomeW;
+      totalHeight = welcomeH;
+      alwaysOnTop = false;
+      slots = [
+        {
+          slot: 0,
+          simulated: true,
+          sourceX: 0,
+          sourceY: 0,
+          sourceWidth: welcomeW,
+          sourceHeight: welcomeH,
+          windowX: cx,
+          windowY: cy,
+          windowW: welcomeW,
+          windowH: welcomeH,
+        },
+      ];
+    }
   } else {
     console.error("[chromeyumm] No contentUrl in display-config.json and welcome page not found.");
     process.exit(1);
