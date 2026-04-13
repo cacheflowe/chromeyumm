@@ -1636,8 +1636,6 @@ private:
 
 // Forward declaration
 void handleApplicationMenuSelection(UINT menuId);
-static void suspendHotkeys();
-static void resumeHotkeys();
 
 // CEF Keyboard Handler for menu accelerators
 class ChromeyummKeyboardHandler : public CefKeyboardHandler {
@@ -6522,7 +6520,6 @@ CHROMEYUMM_EXPORT HWND createNativeDisplayWindow(
             RegisterClassA(&wc);
             classRegistered = true;
         }
-        // WS_EX_NOREDIRECTIONBITMAP: tell DWM not to allocate a GDI redirection
         HWND hwnd = CreateWindowExA(
             0,
             "NativeDisplayWindowClass",
@@ -6536,9 +6533,6 @@ CHROMEYUMM_EXPORT HWND createNativeDisplayWindow(
             applyAppIcon(hwnd);
             ShowWindow(hwnd, SW_SHOW);
             UpdateWindow(hwnd);
-            // Ensure hotkeys are registered now that a display window exists.
-            // They may have been suspended before this window was created.
-            resumeHotkeys();
         }
         return hwnd;
     });
@@ -8584,45 +8578,30 @@ std::string getMimeTypeForFile(const std::string& path) {
  * =============================================================================
  * GLOBAL KEYBOARD SHORTCUTS
  * =============================================================================
+ *
+ * Implemented via WH_KEYBOARD_LL rather than RegisterHotKey. The hook
+ * intercepts every keypress before it reaches any window. In the callback we
+ * check whether our process owns the foreground window — if yes, we match
+ * against registered shortcuts and fire the handler (swallowing the keypress);
+ * if no, we call CallNextHookEx so the keypress reaches the active app
+ * unchanged. No register/unregister cycle is needed, so focus transitions
+ * never leave shortcuts in a broken or permanently-suspended state.
  */
 
-// Callback type for global shortcut triggers
 typedef void (*GlobalShortcutCallback)(const char* accelerator);
 static GlobalShortcutCallback g_globalShortcutCallback = nullptr;
 
-// Custom Windows messages for hotkey thread communication
-#define WM_REGISTER_HOTKEY (WM_USER + 100)
-#define WM_UNREGISTER_HOTKEY (WM_USER + 101)
-#define WM_UNREGISTER_ALL_HOTKEYS (WM_USER + 102)
-
-// Structure to pass hotkey registration data between threads
-struct HotkeyRegisterData {
-    int hotkeyId;
-    UINT modifiers;
-    UINT vkCode;
-    std::string accelerator;
-    BOOL* result;  // Output: success/failure
-    HANDLE completionEvent;  // Signal when operation is complete
-};
-
-// Per-hotkey registration info so we can re-register after focus changes
-struct HotkeyRegistration {
-    int hotkeyId;
-    UINT modifiers;
-    UINT vkCode;
+struct ShortcutEntry {
+    UINT        vkCode;
+    UINT        modifiers; // MOD_CONTROL | MOD_SHIFT | MOD_ALT | MOD_WIN
     std::string accelerator;
 };
 
-// Storage for registered shortcuts: accelerator string -> hotkey ID
-static std::map<std::string, int> g_globalShortcuts;
-static std::map<int, std::string> g_hotkeyIdToAccelerator;
-static std::map<int, HotkeyRegistration> g_hotkeyRegistrations;  // hotkeyId -> registration data for re-register
-static bool g_hotkeysCurrentlyRegistered = false;  // true when OS-level hotkeys are active
-static int g_nextHotkeyId = 1;
-static HWND g_hotkeyWindow = NULL;
-static std::thread g_hotkeyThread;
-static bool g_hotkeyThreadRunning = false;
-static std::mutex g_hotkeyMutex;  // Protect access to g_globalShortcuts and g_hotkeyIdToAccelerator
+static std::vector<ShortcutEntry> g_shortcuts;
+static std::mutex                 g_shortcutMutex;
+static HHOOK                      g_keyboardHook = NULL;
+static std::thread                g_hotkeyThread;
+static bool                       g_hotkeyThreadRunning = false;
 
 // Helper to parse virtual key code from key string
 static UINT getVirtualKeyCode(const std::string& key) {
@@ -8687,146 +8666,62 @@ static UINT parseModifiers(const std::string& accelerator, std::string& outKey) 
     return modifiers;
 }
 
-// Window procedure for hotkey window
-static LRESULT CALLBACK HotkeyWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    if (msg == WM_HOTKEY) {
-        // Hotkeys are only registered while our app has focus (see focus hook below),
-        // so no process ID check needed — if we get WM_HOTKEY, we're focused.
-        int hotkeyId = (int)wParam;
-        std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-        auto it = g_hotkeyIdToAccelerator.find(hotkeyId);
-        if (it != g_hotkeyIdToAccelerator.end() && g_globalShortcutCallback) {
-            g_globalShortcutCallback(it->second.c_str());
-        }
-        return 0;
-    }
-    else if (msg == WM_REGISTER_HOTKEY) {
-        HotkeyRegisterData* data = reinterpret_cast<HotkeyRegisterData*>(lParam);
-        BOOL success = RegisterHotKey(hwnd, data->hotkeyId, data->modifiers, data->vkCode);
-        if (success) {
-            std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-            g_globalShortcuts[data->accelerator] = data->hotkeyId;
-            g_hotkeyIdToAccelerator[data->hotkeyId] = data->accelerator;
-            // Store registration data for re-registering on focus gain
-            HotkeyRegistration reg;
-            reg.hotkeyId = data->hotkeyId;
-            reg.modifiers = data->modifiers;
-            reg.vkCode = data->vkCode;
-            reg.accelerator = data->accelerator;
-            g_hotkeyRegistrations[data->hotkeyId] = reg;
-            g_hotkeysCurrentlyRegistered = true;
-            ::log("GlobalShortcut registered successfully: '" + data->accelerator + "' (id=" + std::to_string(data->hotkeyId) + ", total=" + std::to_string(g_globalShortcuts.size()) + ")");
-        } else {
-            DWORD error = GetLastError();
-            ::log("ERROR: Failed to register hotkey '" + data->accelerator + "' - Win32 error: " + std::to_string(error));
-        }
-        *data->result = success;
-        SetEvent(data->completionEvent);
-        return 0;
-    }
-    else if (msg == WM_UNREGISTER_HOTKEY) {
-        int hotkeyId = (int)wParam;
-        UnregisterHotKey(hwnd, hotkeyId);
-        {
-            std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-            g_hotkeyRegistrations.erase(hotkeyId);
-        }
-        return 0;
-    }
-    else if (msg == WM_UNREGISTER_ALL_HOTKEYS) {
-        std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-        for (const auto& pair : g_globalShortcuts) {
-            UnregisterHotKey(hwnd, pair.second);
-        }
-        g_globalShortcuts.clear();
-        g_hotkeyIdToAccelerator.clear();
-        g_hotkeyRegistrations.clear();
-        g_hotkeysCurrentlyRegistered = false;
-        ::log("GlobalShortcut: Unregistered all shortcuts");
-        return 0;
-    }
-    return DefWindowProc(hwnd, msg, wParam, lParam);
-}
+// Low-level keyboard hook — intercepts all keypresses system-wide.
+// Only fires our callback when this process is the foreground owner.
+// No register/unregister cycle needed: focus-awareness is per-keypress.
+static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
+    if (nCode != HC_ACTION)
+        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
+    if (wParam != WM_KEYDOWN && wParam != WM_SYSKEYDOWN)
+        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
 
-// Suspend hotkeys at the OS level (unregister without clearing our maps).
-// Called when the app loses focus so other apps can use those key combos.
-// Skipped when display windows are active: the operator is watching our output
-// and hotkeys must remain live regardless of which window has focus.
-static void suspendHotkeys() {
-    if (!g_hotkeyWindow) return;
-    if (!g_displayWindows.empty()) {
-        ::log("GlobalShortcut: Suspension skipped (display windows active)");
-        return;
-    }
-    std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-    for (const auto& pair : g_hotkeyRegistrations) {
-        UnregisterHotKey(g_hotkeyWindow, pair.first);
-    }
-    g_hotkeysCurrentlyRegistered = false;
-    ::log("GlobalShortcut: Suspended (app lost focus, " + std::to_string(g_hotkeyRegistrations.size()) + " hotkeys)");
-}
-
-// Resume hotkeys at the OS level (re-register from stored data).
-// Called when the app gains focus.
-static void resumeHotkeys() {
-    if (!g_hotkeyWindow) return;
-    std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-    int registered = 0;
-    for (const auto& pair : g_hotkeyRegistrations) {
-        const HotkeyRegistration& reg = pair.second;
-        // Always unregister first to clear any stale OS-level state, then re-register.
-        UnregisterHotKey(g_hotkeyWindow, reg.hotkeyId);
-        if (RegisterHotKey(g_hotkeyWindow, reg.hotkeyId, reg.modifiers, reg.vkCode)) {
-            registered++;
-        } else {
-            ::log("GlobalShortcut: Failed to resume '" + reg.accelerator + "' (Win32 error " + std::to_string(GetLastError()) + ")");
-        }
-    }
-    g_hotkeysCurrentlyRegistered = true;
-    ::log("GlobalShortcut: Resumed (app gained focus, " + std::to_string(registered) + "/" + std::to_string(g_hotkeyRegistrations.size()) + " hotkeys)");
-}
-
-// WinEvent hook callback — monitors foreground window changes to suspend/resume hotkeys
-static void CALLBACK ForegroundChangeProc(
-    HWINEVENTHOOK hWinEventHook, DWORD event, HWND hwnd,
-    LONG idObject, LONG idChild, DWORD idEventThread, DWORD dwmsEventTime)
-{
-    if (event != EVENT_SYSTEM_FOREGROUND) return;
+    // Only fire when a chromeyumm window owns the foreground.
+    // NDWs no longer have WS_EX_NOACTIVATE, so they can become foreground
+    // normally (e.g. when clicked in deployment mode).
+    HWND fgHwnd = GetForegroundWindow();
     DWORD fgPid = 0;
-    if (hwnd) GetWindowThreadProcessId(hwnd, &fgPid);
-    if (fgPid == GetCurrentProcessId()) {
-        resumeHotkeys();
-    } else {
-        suspendHotkeys();
+    if (fgHwnd) GetWindowThreadProcessId(fgHwnd, &fgPid);
+    if (fgPid != GetCurrentProcessId())
+        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
+
+    KBDLLHOOKSTRUCT* kbs = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+    const UINT vk = kbs->vkCode;
+
+    // Skip bare modifier keys — they are never a complete shortcut.
+    if (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL ||
+        vk == VK_SHIFT   || vk == VK_LSHIFT   || vk == VK_RSHIFT   ||
+        vk == VK_MENU    || vk == VK_LMENU    || vk == VK_RMENU    ||
+        vk == VK_LWIN    || vk == VK_RWIN)
+        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
+
+    const bool ctrl  = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+    const bool shift = (GetKeyState(VK_SHIFT)   & 0x8000) != 0;
+    const bool alt   = (kbs->flags & LLKHF_ALTDOWN) != 0;
+    const bool win   = (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
+                       (GetKeyState(VK_RWIN) & 0x8000) != 0;
+
+    std::lock_guard<std::mutex> lock(g_shortcutMutex);
+    for (const auto& sc : g_shortcuts) {
+        if (sc.vkCode != vk) continue;
+        if (((sc.modifiers & MOD_CONTROL) != 0) != ctrl)  continue;
+        if (((sc.modifiers & MOD_SHIFT)   != 0) != shift) continue;
+        if (((sc.modifiers & MOD_ALT)     != 0) != alt)   continue;
+        if (((sc.modifiers & MOD_WIN)     != 0) != win)   continue;
+        if (g_globalShortcutCallback)
+            g_globalShortcutCallback(sc.accelerator.c_str());
+        return 1; // swallow — don't pass to other apps or CEF
     }
+    return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
 }
 
-// Message loop thread for hotkey window
+// Thread that installs the low-level keyboard hook and runs its message pump.
 static void hotkeyMessageLoop() {
-    // Create a message-only window
-    WNDCLASSEXW wc = {};
-    wc.cbSize = sizeof(WNDCLASSEXW);
-    wc.lpfnWndProc = HotkeyWndProc;
-    wc.hInstance = GetModuleHandle(NULL);
-    wc.lpszClassName = L"ChromeyummHotkeyWindow";
-
-    RegisterClassExW(&wc);
-
-    g_hotkeyWindow = CreateWindowExW(0, L"ChromeyummHotkeyWindow", L"",
-        0, 0, 0, 0, 0, HWND_MESSAGE, NULL, GetModuleHandle(NULL), NULL);
-
-    if (!g_hotkeyWindow) {
-        ::log("ERROR: Failed to create hotkey window");
+    g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc,
+                                      GetModuleHandle(NULL), 0);
+    if (!g_keyboardHook) {
+        ::log("ERROR: SetWindowsHookEx(WH_KEYBOARD_LL) failed: " + std::to_string(GetLastError()));
         return;
     }
-
-    // Install a WinEvent hook to monitor foreground window changes.
-    // When our app loses focus, we unregister all hotkeys so other apps
-    // can use those key combos. When we regain focus, we re-register them.
-    HWINEVENTHOOK hFocusHook = SetWinEventHook(
-        EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND,
-        NULL, ForegroundChangeProc, 0, 0,
-        WINEVENT_OUTOFCONTEXT);
 
     MSG msg;
     while (g_hotkeyThreadRunning && GetMessage(&msg, NULL, 0, 0)) {
@@ -8834,24 +8729,19 @@ static void hotkeyMessageLoop() {
         DispatchMessage(&msg);
     }
 
-    if (hFocusHook) UnhookWinEvent(hFocusHook);
-
-    DestroyWindow(g_hotkeyWindow);
-    g_hotkeyWindow = NULL;
+    if (g_keyboardHook) {
+        UnhookWindowsHookEx(g_keyboardHook);
+        g_keyboardHook = NULL;
+    }
 }
 
 // Set the callback for global shortcut events
 extern "C" CHROMEYUMM_EXPORT void setGlobalShortcutCallback(GlobalShortcutCallback callback) {
     g_globalShortcutCallback = callback;
 
-    // Start the hotkey message loop thread if not running
     if (!g_hotkeyThreadRunning && callback) {
         g_hotkeyThreadRunning = true;
         g_hotkeyThread = std::thread(hotkeyMessageLoop);
-        // Wait for window to be created
-        while (!g_hotkeyWindow && g_hotkeyThreadRunning) {
-            Sleep(10);
-        }
     }
 }
 
@@ -8862,32 +8752,7 @@ extern "C" CHROMEYUMM_EXPORT BOOL registerGlobalShortcut(const char* accelerator
         return FALSE;
     }
 
-    // Wait for hotkey window to be ready (with timeout)
-    int waitCount = 0;
-    const int maxWaitMs = 5000; // 5 second timeout
-
-    while (!g_hotkeyWindow && waitCount < maxWaitMs) {
-        Sleep(10);
-        waitCount += 10;
-    }
-
-    if (!g_hotkeyWindow) {
-        ::log("ERROR: Cannot register shortcut - hotkey window not ready after " + std::to_string(waitCount) + "ms");
-        return FALSE;
-    }
-
     std::string accelStr(accelerator);
-
-    // Check if already registered (with mutex protection)
-    {
-        std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-        if (g_globalShortcuts.find(accelStr) != g_globalShortcuts.end()) {
-            ::log("GlobalShortcut already registered: " + accelStr);
-            return FALSE;
-        }
-    }
-
-    // Parse the accelerator
     std::string key;
     UINT modifiers = parseModifiers(accelStr, key);
     UINT vkCode = getVirtualKeyCode(key);
@@ -8897,34 +8762,17 @@ extern "C" CHROMEYUMM_EXPORT BOOL registerGlobalShortcut(const char* accelerator
         return FALSE;
     }
 
-    // Prepare registration data
-    int hotkeyId = g_nextHotkeyId++;
-    BOOL result = FALSE;
-    HANDLE completionEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
-
-    HotkeyRegisterData data;
-    data.hotkeyId = hotkeyId;
-    data.modifiers = modifiers | MOD_NOREPEAT;
-    data.vkCode = vkCode;
-    data.accelerator = accelStr;
-    data.result = &result;
-    data.completionEvent = completionEvent;
-
-    ::log("GlobalShortcut: Posting registration request for '" + accelStr + "' with modifiers=" + std::to_string(modifiers) + " vkCode=" + std::to_string(vkCode));
-
-    // Post message to hotkey thread to register the hotkey
-    PostMessage(g_hotkeyWindow, WM_REGISTER_HOTKEY, 0, reinterpret_cast<LPARAM>(&data));
-
-    // Wait for registration to complete (with timeout)
-    DWORD waitResult = WaitForSingleObject(completionEvent, 5000);
-    CloseHandle(completionEvent);
-
-    if (waitResult != WAIT_OBJECT_0) {
-        ::log("ERROR: Registration timeout for '" + accelStr + "'");
-        return FALSE;
+    std::lock_guard<std::mutex> lock(g_shortcutMutex);
+    for (const auto& sc : g_shortcuts) {
+        if (sc.accelerator == accelStr) {
+            ::log("GlobalShortcut already registered: " + accelStr);
+            return FALSE;
+        }
     }
 
-    return result;
+    g_shortcuts.push_back({ vkCode, modifiers, accelStr });
+    ::log("GlobalShortcut registered: '" + accelStr + "' (vk=" + std::to_string(vkCode) + " mod=" + std::to_string(modifiers) + " total=" + std::to_string(g_shortcuts.size()) + ")");
+    return TRUE;
 }
 
 // Unregister a global keyboard shortcut
@@ -8932,32 +8780,20 @@ extern "C" CHROMEYUMM_EXPORT BOOL unregisterGlobalShortcut(const char* accelerat
     if (!accelerator) return FALSE;
 
     std::string accelStr(accelerator);
-    int hotkeyId = -1;
-
-    {
-        std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-        auto it = g_globalShortcuts.find(accelStr);
-        if (it != g_globalShortcuts.end()) {
-            hotkeyId = it->second;
-            g_hotkeyIdToAccelerator.erase(hotkeyId);
-            g_globalShortcuts.erase(it);
-        }
-    }
-
-    if (hotkeyId != -1 && g_hotkeyWindow) {
-        PostMessage(g_hotkeyWindow, WM_UNREGISTER_HOTKEY, hotkeyId, 0);
-        ::log("GlobalShortcut unregistered: " + accelStr);
-        return TRUE;
-    }
-
-    return FALSE;
+    std::lock_guard<std::mutex> lock(g_shortcutMutex);
+    auto it = std::remove_if(g_shortcuts.begin(), g_shortcuts.end(),
+        [&](const ShortcutEntry& sc) { return sc.accelerator == accelStr; });
+    if (it == g_shortcuts.end()) return FALSE;
+    g_shortcuts.erase(it, g_shortcuts.end());
+    ::log("GlobalShortcut unregistered: " + accelStr);
+    return TRUE;
 }
 
 // Unregister all global keyboard shortcuts
 extern "C" CHROMEYUMM_EXPORT void unregisterAllGlobalShortcuts() {
-    if (g_hotkeyWindow) {
-        PostMessage(g_hotkeyWindow, WM_UNREGISTER_ALL_HOTKEYS, 0, 0);
-    }
+    std::lock_guard<std::mutex> lock(g_shortcutMutex);
+    g_shortcuts.clear();
+    ::log("GlobalShortcut: Unregistered all shortcuts");
 }
 
 // Check if a shortcut is registered
@@ -8965,10 +8801,11 @@ extern "C" CHROMEYUMM_EXPORT BOOL isGlobalShortcutRegistered(const char* acceler
     if (!accelerator) return FALSE;
 
     std::string accelStr(accelerator);
-    std::lock_guard<std::mutex> lock(g_hotkeyMutex);
-    bool found = g_globalShortcuts.find(accelStr) != g_globalShortcuts.end();
-    ::log("GlobalShortcut.isRegistered: Checking '" + accelStr + "' - " + (found ? "FOUND" : "NOT FOUND") + " (total shortcuts=" + std::to_string(g_globalShortcuts.size()) + ")");
-    return found;
+    std::lock_guard<std::mutex> lock(g_shortcutMutex);
+    for (const auto& sc : g_shortcuts) {
+        if (sc.accelerator == accelStr) return TRUE;
+    }
+    return FALSE;
 }
 
 /*

@@ -36,4 +36,4 @@ Single master browser with GPU blit via `CopySubresourceRegion`. The performance
 
 ## Related
 - [osr-shared-texture.md](osr-shared-texture.md) — Where the texture comes from
-- [ARCHITECTURE.md](../../ARCHITECTURE.md) — System diagram
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — System diagram

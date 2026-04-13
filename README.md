@@ -1,6 +1,8 @@
 
 ![Chromeyumm logo](native/app.png)
 
+![Release](https://github.com/cacheflowe/chromeyumm/actions/workflows/release.yml/badge.svg)
+
 # Chromeyumm
 
 A minimal Windows CEF browser built for site-specific installations. Renders web content across multiple displays via direct D3D11 GPU blitting, with Spout texture I/O for integration with TouchDesigner, Resolume, and other real-time environments — plus native DDP output for driving LED panels and pixel-mapped fixtures via FPP and compatible controllers.
@@ -38,7 +40,7 @@ bun.exe (Bun runtime)
       └── Spout receiver   (staging readback → Win32 shared memory → browser)
 ```
 
-See `DEVELOPMENT.md` for full architecture details, GPU findings, and performance analysis.
+See `docs/DEVELOPMENT.md` for GPU findings, C++ internals, and project history.
 
 ---
 

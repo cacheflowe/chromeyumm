@@ -67,4 +67,4 @@
 
 - [QUALITY_SCORE.md](QUALITY_SCORE.md) — Quality rubric
 - [SECURITY.md](SECURITY.md) — Sandbox and permissions
-- [DEVELOPMENT.md](../DEVELOPMENT.md) — GPU notes and known issues
+- [DEVELOPMENT.md](DEVELOPMENT.md) — GPU notes and known issues

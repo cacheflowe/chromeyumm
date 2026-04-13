@@ -169,8 +169,9 @@ Main event: `did-navigate` (used by master webview to inject scripts after page 
 
 ## Related
 
-- [DEVELOPMENT.md](../DEVELOPMENT.md) — Full C++ internals reference
-- [ARCHITECTURE.md](../ARCHITECTURE.md) — System context and data flow
+- [DEVELOPMENT.md](DEVELOPMENT.md) — C++ internals, GPU findings, project history
+- [ARCHITECTURE.md](ARCHITECTURE.md) — System context and data flow
 - [FRONTEND.md](FRONTEND.md) — Browser-side architecture
 - [references/cef-upgrade.md](references/cef-upgrade.md) — CEF upgrade procedure
 - [references/ffi-patterns.md](references/ffi-patterns.md) — FFI coding patterns
+- [references/global-shortcuts.md](references/global-shortcuts.md) — Global shortcut design, WH_KEYBOARD_LL rationale, adding new shortcuts

@@ -39,5 +39,5 @@ Breaking changes are documented in the [CEF changelog](https://bitbucket.org/chr
 
 ## Related
 
-- [DEVELOPMENT.md](../../DEVELOPMENT.md) — CEF version upgrade section
+- [DEVELOPMENT.md](../DEVELOPMENT.md) — C++ internals reference
 - [docs/BACKEND.md](../BACKEND.md) — C++ internals

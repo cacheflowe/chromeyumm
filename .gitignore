@@ -27,5 +27,8 @@ bun.lockb
 .DS_Store
 Thumbs.db
 
+# Extras
+.claude/
+
 # Assets
 _assets/

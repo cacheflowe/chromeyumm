@@ -18,7 +18,8 @@ bun scripts/release.ts    # package release zip
 
 | Path | Purpose |
 |---|---|
-| `native/cef-wrapper.cpp` | Main C++ DLL (~12k lines): CEF, D3D11, Spout, NativeDisplayWindow |
+| `native/cef-wrapper.cpp` | Main C++ DLL: CEF, D3D11, Spout, NativeDisplayWindow |
+| `native/frame-output/` | Frame transport module (DDP output, Spout sender, staging readback) |
 | `native/cef-helper.cpp` | CEF renderer process helper (Spout input V8 bindings) |
 | `native/shared/` | Shared C++ headers |
 | `native/vendor/` | CEF + Spout vendor dirs (gitignored, see `scripts/setup-vendors.ts`) |
@@ -44,8 +45,8 @@ bun scripts/release.ts    # package release zip
 
 | Document | Purpose |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System context, data flow, domain boundaries |
-| [DEVELOPMENT.md](DEVELOPMENT.md) | Deep C++ internals, GPU findings, build details |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System context, data flow, domain boundaries |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Deep C++ internals, GPU findings, project history |
 | [docs/COMMANDS.md](docs/COMMANDS.md) | All build/run/dev commands |
 | [docs/DESIGN.md](docs/DESIGN.md) | Product and design principles |
 | [docs/FRONTEND.md](docs/FRONTEND.md) | Views, browser-side architecture |

@@ -13,7 +13,7 @@ const { Engine, Bodies, Body, Composite } = Matter;
 
 const palette = ["#ff2255", "#2255ff", "#00ffaa", "#ff8800", "#7b00e0", "#00ccdd"];
 const MAX_SHAPES = 200;
-const SPAWN_MS = 60;
+const SPAWN_MS = 100;
 
 interface RenderData {
   kind: "circle" | "rect" | "poly";
@@ -38,7 +38,7 @@ new p5((p: p5) => {
 
   p.setup = () => {
     p.createCanvas(p.windowWidth, p.windowHeight, p.WEBGL);
-    unit = Math.min(p.width, p.height) / 80;
+    unit = Math.min(p.width, p.height) / 76;
     engine = Engine.create({ gravity: { x: 0, y: 0.6, scale: 0.001 } });
 
     const wallThick = 50 * unit;
@@ -93,6 +93,15 @@ new p5((p: p5) => {
         drawVerts(body);
       }
     }
+
+    // on interval, reset the simulation
+    if (p.frameCount % (60 * 13) === 0) {
+      reset();
+    }
+
+    // darken canvas
+    p.fill(0, 100);
+    p.rect(0, 0, p.width, p.height);
   };
 
   p.keyPressed = () => {

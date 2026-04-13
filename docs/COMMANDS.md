@@ -100,7 +100,7 @@ GitHub Actions: push a `v*` tag to trigger `.github/workflows/release.yml` autom
 ## Related
 
 - [AGENTS.md](../AGENTS.md) — Quick start
-- [DEVELOPMENT.md](../DEVELOPMENT.md) — Build workflow details
+- [DEVELOPMENT.md](DEVELOPMENT.md) — C++ internals and GPU findings
 - [docs/references/cpp-tooling.md](references/cpp-tooling.md) — C++ environment setup (VS, CMake, sccache)
 - [docs/references/cef-upgrade.md](references/cef-upgrade.md) — CEF version upgrade procedure
 - [docs/references/vendor-management.md](references/vendor-management.md) — Vendor dependency strategy

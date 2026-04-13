@@ -214,6 +214,6 @@ That distinction matters because Spout and DDP do not originate in the HTML laye
 
 ## Related
 
-- [../../ARCHITECTURE.md](../../ARCHITECTURE.md) — System context and primary architecture notes
+- [../ARCHITECTURE.md](../ARCHITECTURE.md) — System context and primary architecture notes
 - [../BACKEND.md](../BACKEND.md) — Native wrapper, FFI, and output implementation details
 - [../FRONTEND.md](../FRONTEND.md) — Browser-side view architecture
