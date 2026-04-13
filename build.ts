@@ -161,6 +161,7 @@ async function buildNative() {
       `cl /c /EHsc /std:c++20 /DNOMINMAX /MT` +
         ` /I"${cefInclude}"` +
         ` /I"${NATIVE_DIR}"` +
+        ` /I"${join(NATIVE_DIR, "vendor", "spout", "include", "SpoutDX")}"` +
         ` /Fo"${spoutOutputObj}" "${join(NATIVE_DIR, "frame-output", "protocols", "spout", "spout_output.cpp")}"`,
     ),
   ]);
