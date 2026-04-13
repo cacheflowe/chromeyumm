@@ -113,11 +113,9 @@ async function buildNative() {
     "libcef_dll_wrapper.lib",
   );
   const spoutLib = join(NATIVE_DIR, "vendor", "spout", "MT", "lib", "SpoutDX_static.lib");
-  const spoutArg = existsSync(spoutLib) ? `"${spoutLib}"` : "";
 
   if (!existsSync(cefLib)) throw new Error(`CEF lib not found: ${cefLib}\nSee native/README.md for vendor setup.`);
-  if (spoutArg) console.log("SpoutDX found — Spout output enabled.");
-  else console.log("SpoutDX not found — building without Spout output.");
+  if (!existsSync(spoutLib)) throw new Error(`Spout lib not found: ${spoutLib}\nRun: bun scripts/setup-vendors.ts`);
 
   const obj = join(NATIVE_DIR, "build", "cef-wrapper.obj");
   const frameTransportRuntimeObj = join(NATIVE_DIR, "build", "frame-transport-runtime.obj");
@@ -171,7 +169,7 @@ async function buildNative() {
       ` user32.lib ole32.lib shell32.lib shlwapi.lib advapi32.lib dcomp.lib d2d1.lib` +
       ` dwmapi.lib d3d11.lib dxgi.lib kernel32.lib comctl32.lib delayimp.lib libcmt.lib` +
       ` "${cefLib}" "${cefWrapper}" /DELAYLOAD:libcef.dll` +
-      ` ${spoutArg} "${obj}" "${frameTransportRuntimeObj}" "${frameTransportExportsObj}" "${frameOutputManagerObj}" "${ddpOutputObj}" "${spoutOutputObj}"`,
+      ` "${spoutLib}" "${obj}" "${frameTransportRuntimeObj}" "${frameTransportExportsObj}" "${frameOutputManagerObj}" "${ddpOutputObj}" "${spoutOutputObj}"`,
   );
   console.log(`✓ DLL: ${dll}`);
 
