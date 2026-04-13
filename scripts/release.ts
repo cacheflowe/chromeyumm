@@ -31,9 +31,11 @@ const EXCLUDE = new Set([
   "app.js", // redundant — baked into chromeyumm.exe
   "app.log", // runtime log
   "debug-inject.js", // dev artifact
+  "debug.log", // CEF runtime log
   "libcef.lib", // link-time only, not needed at runtime
   "libNativeWrapper.dll.manifest",
   "libNativeWrapper.exp",
+  "libNativeWrapper.lib",
 ]);
 
 // ---------------------------------------------------------------------------
