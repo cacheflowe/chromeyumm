@@ -4955,23 +4955,38 @@ HMENU createApplicationMenuFromConfig(const SimpleJsonValue& menuConfig, StatusI
 
 
 
-// Helper function to terminate all CEF helper processes
+// Helper function to terminate orphaned CEF helper processes from previous runs.
+// Derive the helper name from the main exe name so it stays consistent.
 void TerminateCEFHelperProcesses() {
+    // Build the expected helper exe name from this process's exe name
+    wchar_t exeNameBuf[MAX_PATH];
+    GetModuleFileNameW(NULL, exeNameBuf, MAX_PATH);
+    std::wstring helperName = L"chromeyumm Helper.exe"; // fallback
+    if (wchar_t* sl = wcsrchr(exeNameBuf, L'\\')) {
+        std::wstring file = sl + 1;
+        if (file.size() > 4) {
+            std::wstring stem = file.substr(0, file.size() - 4);
+            helperName = stem + L" Helper.exe";
+        }
+    }
+
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot == INVALID_HANDLE_VALUE) {
         return;
     }
     
+    DWORD ourPid = GetCurrentProcessId();
     PROCESSENTRY32W pe32;
     pe32.dwSize = sizeof(PROCESSENTRY32W);
     
     if (Process32FirstW(hSnapshot, &pe32)) {
         do {
-            // Check if this is a "bun Helper.exe" process
-            if (wcsstr(pe32.szExeFile, L"bun Helper.exe") != nullptr) {
+            // Kill helpers that match our name but aren't children of this process
+            if (wcsstr(pe32.szExeFile, helperName.c_str()) != nullptr &&
+                pe32.th32ParentProcessID != ourPid) {
                 HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pe32.th32ProcessID);
                 if (hProcess != nullptr) {
-                    std::wcout << L"[CEF] Terminating helper process: " << pe32.szExeFile 
+                    std::wcout << L"[CEF] Terminating orphaned helper: " << pe32.szExeFile 
                               << L" (PID: " << pe32.th32ProcessID << L")" << std::endl;
                     TerminateProcess(hProcess, 0);
                     CloseHandle(hProcess);
@@ -8675,6 +8690,9 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
     if (wParam != WM_KEYDOWN && wParam != WM_SYSKEYDOWN)
         return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
 
+    KBDLLHOOKSTRUCT* kbs = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
+    const UINT vk = kbs->vkCode;
+
     // Only fire when a chromeyumm window owns the foreground.
     // NDWs no longer have WS_EX_NOACTIVATE, so they can become foreground
     // normally (e.g. when clicked in deployment mode).
@@ -8683,9 +8701,6 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
     if (fgHwnd) GetWindowThreadProcessId(fgHwnd, &fgPid);
     if (fgPid != GetCurrentProcessId())
         return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
-
-    KBDLLHOOKSTRUCT* kbs = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
-    const UINT vk = kbs->vkCode;
 
     // Skip bare modifier keys — they are never a complete shortcut.
     if (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL ||

@@ -30,7 +30,8 @@ const PKG_PATH = join(ROOT, "package.json");
 const EXCLUDE = new Set([
   "app.js", // redundant — baked into chromeyumm.exe
   "app.log", // runtime log
-  "debug-inject.js", // dev artifact
+  "bootstrap.exe", // stale dev artifact
+  "bootstrapc.exe", // stale dev artifact
   "debug.log", // CEF runtime log
   "libcef.lib", // link-time only, not needed at runtime
   "libNativeWrapper.dll.manifest",

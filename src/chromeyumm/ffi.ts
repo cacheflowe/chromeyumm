@@ -6,7 +6,7 @@
  * using `dumpbin /exports libNativeWrapper.dll` and update accordingly.
  */
 
-import { dlopen, FFIType, JSCallback } from "bun:ffi";
+import { dlopen, FFIType, JSCallback, CString, type Pointer } from "bun:ffi";
 import { join, dirname } from "path";
 import { existsSync } from "fs";
 
@@ -240,10 +240,10 @@ function dispatchBunBridgeMessage(webviewId: number, message: string) {
 
 /** C++ WebviewEventHandler → TS (did-navigate, will-navigate, etc.) */
 export const webviewEventCallback = new JSCallback(
-  (webviewId: number, type: string, detail: string) => {
+  (webviewId: number, type: number, detail: number) => {
     try {
-      const eventName = typeof type === "string" ? type : String(type);
-      const eventDetail = typeof detail === "string" ? detail : String(detail);
+      const eventName = new CString(type as unknown as Pointer).toString();
+      const eventDetail = new CString(detail as unknown as Pointer).toString();
       dispatchWebviewEvent(webviewId, eventName, eventDetail);
     } catch (e) {
       console.error("[chromeyumm] webviewEventCallback error:", e);
@@ -254,9 +254,9 @@ export const webviewEventCallback = new JSCallback(
 
 /** CEF → TS event bridge (renderer process messages, JSON-formatted) */
 export const eventBridgeCallback = new JSCallback(
-  (_id: number, msg: string) => {
+  (_id: number, msg: number) => {
     try {
-      const raw = (typeof msg === "string" ? msg : String(msg)).trim();
+      const raw = new CString(msg as unknown as Pointer).toString().trim();
       if (!raw || raw[0] !== "{") return;
       const json = JSON.parse(raw);
       if (json.id === "webviewEvent") {
@@ -272,9 +272,9 @@ export const eventBridgeCallback = new JSCallback(
 
 /** CEF → TS Bun bridge (page-to-host JSON/string messages for non-sandboxed webviews). */
 export const bunBridgeCallback = new JSCallback(
-  (webviewId: number, msg: string) => {
+  (webviewId: number, msg: number) => {
     try {
-      const raw = typeof msg === "string" ? msg : String(msg);
+      const raw = new CString(msg as unknown as Pointer).toString();
       dispatchBunBridgeMessage(webviewId, raw);
     } catch (e) {
       console.error("[chromeyumm] bunBridgeCallback error:", e);

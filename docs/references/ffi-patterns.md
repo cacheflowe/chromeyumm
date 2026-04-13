@@ -68,6 +68,44 @@ For unused bridge handlers, pass a no-op JSCallback (`nullCallback`).
 - Forgetting to NUL-terminate strings (use `cs()`, not `Buffer.from(s)`)
 - Passing wrong pointer type (window ptr vs webview ptr — they're different)
 - Calling window/webview functions outside the event loop thread (must use `dispatch_sync` in C++)
+- **Using `string` types in `threadsafe` JSCallbacks for `FFIType.cstring` args** — see below
+
+## Critical: CString Handling in Threadsafe JSCallbacks
+
+When a C++ function calls a `threadsafe: true` JSCallback and passes a `const char*`,
+Bun's FFI layer delivers it as a **raw pointer** (number), not a JavaScript string.
+The callback parameter type annotation and how you read it matters enormously:
+
+```typescript
+// ✅ CORRECT — receive as number, manually wrap with CString
+import { CString, type Pointer } from "bun:ffi";
+
+const callback = new JSCallback(
+  (id: number, strPtr: number) => {
+    const str = new CString(strPtr as unknown as Pointer).toString();
+    // str is now a proper JS string
+  },
+  { args: [FFIType.u32, FFIType.cstring], returns: FFIType.void, threadsafe: true }
+);
+
+// ❌ WRONG — declaring parameter as string and using typeof checks
+const callback = new JSCallback(
+  (id: number, str: string) => {
+    const val = typeof str === "string" ? str : String(str);
+    // val will be garbage — the pointer was coerced to a number string like "140234567890"
+  },
+  { args: [FFIType.u32, FFIType.cstring], returns: FFIType.void, threadsafe: true }
+);
+```
+
+This applies to **all** threadsafe callbacks that receive C strings:
+`webviewEventCallback`, `eventBridgeCallback`, `bunBridgeCallback`,
+and the global shortcut callback in `shortcut.ts`.
+
+> **Symptoms when broken**: callbacks fire but received strings are garbage numbers.
+> Events like `did-navigate` silently fail to dispatch because the event name
+> doesn't match. Debug panels don't inject. Everything *appears* to work on the
+> C++ side (hook fires, CEF events emit) but the JS side never sees valid data.
 
 ## Related
 

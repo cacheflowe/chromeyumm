@@ -90,6 +90,30 @@ The shortcut fires `g_globalShortcutCallback(accelerator)` with the original
 accelerator string. The TS side receives it in the callback passed to
 `setGlobalShortcutCallback` and dispatches from there.
 
+## CString Pointer Handling
+
+The shortcut callback receives a `const char*` from C++ via a `threadsafe: true`
+JSCallback. Bun delivers this as a **raw pointer** (number), not a JS string.
+The callback in `shortcut.ts` must use explicit `CString` wrapping:
+
+```typescript
+import { CString, type Pointer } from "bun:ffi";
+
+const shortcutCallback = new JSCallback(
+  (acceleratorPtr: number) => {
+    const accelerator = new CString(acceleratorPtr as unknown as Pointer).toString();
+    handlers.get(accelerator)?.();
+  },
+  { args: [FFIType.cstring], returns: FFIType.void, threadsafe: true },
+);
+```
+
+> **Do not** change the parameter type to `string` or use `typeof x === "string"`
+> guards. This silently breaks — the pointer becomes a number string like
+> `"140234567890"` that never matches any accelerator. See
+> [ffi-patterns.md](ffi-patterns.md#critical-cstring-handling-in-threadsafe-jscallbacks)
+> for the full explanation.
+
 ## Shutdown
 
 `hotkeyMessageLoop` exits its `GetMessage` loop when `g_hotkeyThreadRunning`

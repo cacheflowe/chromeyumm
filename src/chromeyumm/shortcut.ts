@@ -1,14 +1,14 @@
 /** Global keyboard shortcuts via the CEF accelerator API. */
 
-import { JSCallback, FFIType } from "bun:ffi";
+import { JSCallback, FFIType, CString, type Pointer } from "bun:ffi";
 import { native, cs } from "./ffi.ts";
 
 const handlers = new Map<string, () => void>();
 
 const shortcutCallback = new JSCallback(
-  (accelerator: string) => {
-    const key = typeof accelerator === "string" ? accelerator : String(accelerator);
-    handlers.get(key)?.();
+  (acceleratorPtr: number) => {
+    const accelerator = new CString(acceleratorPtr as unknown as Pointer).toString();
+    handlers.get(accelerator)?.();
   },
   { args: [FFIType.cstring], returns: FFIType.void, threadsafe: true },
 );
