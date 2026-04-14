@@ -46,6 +46,13 @@
 **Symptom**: Calling `loadURL()` with a new URL has no effect.
 **Workaround**: Use `executeJavascript("location.reload()")` for content reload. Ctrl+R already uses this approach.
 
+### FFI Callback Strings Are Garbage (Silent Failure)
+
+**Symptom**: C++ events fire correctly (visible in logs) but JS-side handlers never trigger. `did-navigate` doesn't dispatch, debug panel doesn't inject, keyboard shortcuts may not reach JS. No errors thrown — everything _appears_ to work on the native side.
+**Cause**: `threadsafe: true` JSCallbacks with `FFIType.cstring` args deliver raw pointers (numbers), not JS strings. If the callback parameter is typed as `string` and handled with `typeof str === "string"`, the pointer number gets coerced to a garbage string like `"140234567890"`.
+**Mitigation**: Always receive cstring args as `number`, then wrap with `new CString(ptr as unknown as Pointer).toString()`. See [ffi-patterns.md](references/ffi-patterns.md#critical-cstring-handling-in-threadsafe-jscallbacks).
+**Detection**: Add a temporary `console.log` in the callback to inspect the raw value. If it's a large number instead of a string like `"did-navigate"`, the pattern is wrong.
+
 ## Resilience Patterns
 
 | Pattern | Implementation |

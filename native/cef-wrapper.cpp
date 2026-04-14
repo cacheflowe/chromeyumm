@@ -615,9 +615,7 @@ public:
     void OnLoadStart(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, TransitionType transition_type) override;
     void OnLoadEnd(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, int httpStatusCode) override;
     void OnLoadError(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, ErrorCode errorCode, const CefString& errorText, const CefString& failedUrl) override {
-        std::cout << "[CEF] LoadError: " << static_cast<int>(errorCode)
-                  << " - " << errorText.ToString()
-                  << " for URL: " << failedUrl.ToString() << std::endl;
+        ::log("CEF LoadError: " + std::to_string(static_cast<int>(errorCode)) + " - " + errorText.ToString() + " for URL: " + failedUrl.ToString());
     }
 
 private:
@@ -642,24 +640,14 @@ public:
     // Return true for OOPIFs to prevent CEF from closing the parent window.
     // Return false only for the main/last browser when actually quitting the app.
     bool DoClose(CefRefPtr<CefBrowser> browser) override {
-        std::cout << "[CEF] DoClose: Browser ID " << browser->GetIdentifier()
-                  << ", browser_count=" << g_browser_count << std::endl;
-
-        // For OOPIFs (when there are other browsers still open, or when we're not shutting down),
-        // return true to prevent CEF from sending WM_CLOSE to the parent window.
-        // We handle the actual close ourselves in remove() by calling CloseBrowser.
         if (!g_eventLoopStopping.load()) {
-            std::cout << "[CEF] DoClose: Returning true to prevent parent window close" << std::endl;
             return true;  // We'll handle the close - prevents CEF from closing parent
         }
 
-        std::cout << "[CEF] DoClose: Returning false - app is shutting down" << std::endl;
         return false;
     }
 
     void OnBeforeClose(CefRefPtr<CefBrowser> browser) override {
-        std::cout << "[CEF] OnBeforeClose: Browser ID " << browser->GetIdentifier() << " closing" << std::endl;
-
         // Remove browser from global tracking
         g_cefBrowsers.erase(browser->GetIdentifier());
         {
@@ -667,8 +655,6 @@ public:
             browserToWebviewMap.erase(browser->GetIdentifier());
         }
         g_browser_count--;
-
-        std::cout << "[CEF] Remaining browsers: " << g_browser_count << std::endl;
 
         // Note: Do NOT quit the message loop here when browser count reaches 0.
         // OOPIFs are CEF browsers that can be removed while the main window stays open.
@@ -925,16 +911,10 @@ public:
         std::string currentUrl = frame->GetURL().ToString();
         bool isSamePageReload = (url == currentUrl);
 
-        printf("[CEF OnBeforeBrowse] url=%s user_gesture=%d is_redirect=%d ctrlState=0x%04X isCtrlHeld=%d isSamePageReload=%d hasHandler=%d webviewId=%u\n",
-               url.c_str(), user_gesture, is_redirect, ctrlState, isCtrlHeld, isSamePageReload, webview_event_handler_ != nullptr, webview_id_);
-
         if (isCtrlHeld && user_gesture && !is_redirect && !isSamePageReload && webview_event_handler_) {
             // Debounce: ignore ctrl+click navigations within 500ms
             auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count() / 1000.0;
-
-            printf("[CEF OnBeforeBrowse] Ctrl held! now=%.3f lastTime=%.3f diff=%.3f\n",
-                   now, lastCtrlClickTime, now - lastCtrlClickTime);
 
             if (now - lastCtrlClickTime >= 0.5) {
                 lastCtrlClickTime = now;
@@ -951,12 +931,10 @@ public:
 
                 std::string eventData = "{\"url\":\"" + escapedUrl +
                                        "\",\"isCmdClick\":true,\"modifierFlags\":0}";
-                printf("[CEF OnBeforeBrowse] Firing new-window-open: %s\n", eventData.c_str());
                 // Use strdup to create persistent copies for the FFI callback
                 webview_event_handler_(webview_id_, _strdup("new-window-open"), _strdup(eventData.c_str()));
                 return true;  // Cancel navigation
             } else {
-                printf("[CEF OnBeforeBrowse] Debounced - too soon after last ctrl+click\n");
             }
         }
 
@@ -1029,23 +1007,19 @@ public:
         CefRefPtr<CefMediaAccessCallback> callback) override {
         
         std::string origin = requesting_origin.ToString();
-        printf("CEF: Media access permission requested for %s (permissions: %u)\n", origin.c_str(), requested_permissions);
         
         // Check cache first
         PermissionStatus cachedStatus = getPermissionFromCache(origin, PermissionType::USER_MEDIA);
         
         if (cachedStatus == PermissionStatus::ALLOWED) {
-            printf("CEF: Using cached permission: User previously allowed media access for %s\n", origin.c_str());
             callback->Continue(requested_permissions); // Allow all requested permissions
             return true;
         } else if (cachedStatus == PermissionStatus::DENIED) {
-            printf("CEF: Using cached permission: User previously blocked media access for %s\n", origin.c_str());
             callback->Cancel();
             return true;
         }
         
         // Auto-grant media access (kiosk/installation — no user prompt needed)
-        printf("CEF: Auto-granting media access for %s\n", origin.c_str());
         callback->Continue(requested_permissions);
         cachePermission(origin, PermissionType::USER_MEDIA, PermissionStatus::ALLOWED);
 
@@ -1060,7 +1034,6 @@ public:
         CefRefPtr<CefPermissionPromptCallback> callback) override {
         
         std::string origin = requesting_origin.ToString();
-        printf("CEF: Permission prompt requested for %s (permissions: %u)\n", origin.c_str(), requested_permissions);
         
         // Handle different permission types
         PermissionType permType = PermissionType::OTHER;
@@ -1087,17 +1060,14 @@ public:
         PermissionStatus cachedStatus = getPermissionFromCache(origin, permType);
         
         if (cachedStatus == PermissionStatus::ALLOWED) {
-            printf("CEF: Using cached permission: User previously allowed %s for %s\n", title.c_str(), origin.c_str());
             callback->Continue(CEF_PERMISSION_RESULT_ACCEPT);
             return true;
         } else if (cachedStatus == PermissionStatus::DENIED) {
-            printf("CEF: Using cached permission: User previously blocked %s for %s\n", title.c_str(), origin.c_str());
             callback->Continue(CEF_PERMISSION_RESULT_DENY);
             return true;
         }
         
         // Auto-grant (kiosk/installation — no user prompt needed)
-        printf("CEF: Auto-granting %s for %s\n", title.c_str(), origin.c_str());
         callback->Continue(CEF_PERMISSION_RESULT_ACCEPT);
         cachePermission(origin, permType, PermissionStatus::ALLOWED);
 
@@ -1109,7 +1079,6 @@ public:
         uint64_t prompt_id,
         cef_permission_request_result_t result) override {
         
-        printf("CEF: Permission prompt %I64u dismissed with result %d\n", prompt_id, result);
         // Optional: Handle prompt dismissal if needed
     }
 
@@ -1173,8 +1142,6 @@ public:
                       const std::vector<CefString>& accept_extensions,
                       const std::vector<CefString>& accept_descriptions,
                       CefRefPtr<CefFileDialogCallback> callback) override {
-        
-        printf("CEF Windows: File dialog requested - mode: %d\n", static_cast<int>(mode));
         
         // Run file dialog on main thread using Windows native dialog
         HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
@@ -1305,7 +1272,6 @@ public:
         // Call the callback with results
         callback->Continue(file_paths);
         
-        printf("CEF Windows: File dialog completed with %zu files selected\n", file_paths.size());
         return true; // We handled the dialog
     }
     
@@ -1322,7 +1288,6 @@ public:
                           CefRefPtr<CefDownloadItem> download_item,
                           const CefString& suggested_name,
                           CefRefPtr<CefBeforeDownloadCallback> callback) override {
-        printf("CEF Windows: OnBeforeDownload for %s\n", suggested_name.ToString().c_str());
 
         // Get the Downloads folder using Windows API
         wchar_t* downloadsPath = nullptr;
@@ -1359,14 +1324,11 @@ public:
             std::string utf8Path(size - 1, '\0');
             WideCharToMultiByte(CP_UTF8, 0, destPath.c_str(), -1, &utf8Path[0], size, nullptr, nullptr);
 
-            printf("CEF Windows: Downloading to %s\n", utf8Path.c_str());
-
             // Continue the download to the specified path without showing a dialog
             callback->Continue(utf8Path, false);
 
             CoTaskMemFree(downloadsPath);
         } else {
-            printf("CEF Windows: Could not get Downloads folder, using default behavior\n");
             callback->Continue("", false);
         }
 
@@ -1377,14 +1339,9 @@ public:
                            CefRefPtr<CefDownloadItem> download_item,
                            CefRefPtr<CefDownloadItemCallback> callback) override {
         if (download_item->IsComplete()) {
-            printf("CEF Windows: Download complete - %s\n", download_item->GetFullPath().ToString().c_str());
+            ::log("Download complete: " + download_item->GetFullPath().ToString());
         } else if (download_item->IsCanceled()) {
-            printf("CEF Windows: Download canceled\n");
-        } else if (download_item->IsInProgress()) {
-            int percent = download_item->GetPercentComplete();
-            if (percent >= 0 && percent % 25 == 0) {  // Log at 0%, 25%, 50%, 75%, 100%
-                printf("CEF Windows: Download progress %d%%\n", percent);
-            }
+            ::log("Download canceled");
         }
     }
 
@@ -2472,10 +2429,8 @@ CefRefPtr<CefResponseFilter> ChromeyummResourceRequestHandler::GetResourceRespon
     // (avoids per-frame stdout I/O for spout frame-server fetches at 60fps)
     if (isMain && hasClient && mimeType.find("html") != std::string::npos) {
         std::string combinedScript = client_->GetCombinedScript();
-        std::cout << "[CEF] HTML response detected, scriptLength=" << combinedScript.length() << std::endl;
 
         if (!combinedScript.empty()) {
-            std::cout << "[CEF] Installing response filter to inject preload scripts into HTML" << std::endl;
             return new ChromeyummResponseFilter(combinedScript);
         }
     }
@@ -2966,8 +2921,6 @@ public:
     
     void remove() override {
         if (browser) {
-            std::cout << "[CEF] CEFView::remove() called for browser ID " << browser->GetIdentifier() << std::endl;
-
             // Get the browser host before we clear the reference
             CefRefPtr<CefBrowserHost> host = browser->GetHost();
 
@@ -3007,7 +2960,6 @@ public:
             // Use CloseBrowser(true) to force close since we return true from DoClose
             // to prevent CEF from sending WM_CLOSE to parent window
             MainThreadDispatcher::dispatch_async([host]() {
-                std::cout << "[CEF] Calling CloseBrowser(true) from dispatch_async" << std::endl;
                 host->CloseBrowser(true);  // force=true since DoClose returns true
             });
         }
@@ -3229,9 +3181,6 @@ public:
                 if (browserHwnd) {
                     // Disable input by making the window non-interactive
                     EnableWindow(browserHwnd, FALSE);
-                    // char logMsg[128];
-                    // sprintf_s(logMsg, "CEF mirror mode: Disabled input for browser HWND=%p", browserHwnd);
-                    // ::log(logMsg);
                 }
             }
         } else if (!enable && mirrorModeEnabled) {
@@ -3242,9 +3191,6 @@ public:
                 if (browserHwnd) {
                     // Enable input by making the window interactive again
                     EnableWindow(browserHwnd, TRUE);
-                    // char logMsg[128];
-                    // sprintf_s(logMsg, "CEF mirror mode: Enabled input for browser HWND=%p", browserHwnd);
-                    // ::log(logMsg);
                 }
             }
         }
@@ -3577,10 +3523,6 @@ private:
         HWND browserHwnd = browser->GetHost()->GetWindowHandle();
         if (!browserHwnd) return;
         
-        // char logMsg[256];
-        // sprintf_s(logMsg, "BringCEFChildWindowToFront: Bringing CEF browser HWND=%p to front", browserHwnd);
-        // ::log(logMsg);
-        
         // Bring the CEF browser window to front
         SetWindowPos(browserHwnd, HWND_TOP, 0, 0, 0, 0,
                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -3701,11 +3643,6 @@ public:
                 // Resize the webview to match container
                 RECT bounds = {0, 0, width, height};
                 view->resize(bounds, nullptr);
-                
-                // char logMsg[256];
-                // sprintf_s(logMsg, "Resized auto-sizing WebView %u to %dx%d", 
-                //         view->webviewId, width, height);
-                // ::log(logMsg);
             }
         }
     }
@@ -3853,10 +3790,6 @@ void handleApplicationMenuSelection(UINT menuId) {
     auto it = g_menuItemActions.find(menuId);
     if (it != g_menuItemActions.end()) {
         const std::string& action = it->second;
-        
-        // char logMsg[256];
-        // sprintf_s(logMsg, "Application menu action: %s", action.c_str());
-        // ::log(logMsg);
         
         if (g_appMenuTarget && g_appMenuTarget->zigHandler) {
             if (action == "__quit__") {
@@ -4677,9 +4610,6 @@ static void rebuildAcceleratorTable() {
 
     if (!g_menuAccelerators.empty()) {
         g_hAccelTable = CreateAcceleratorTableA(g_menuAccelerators.data(), (int)g_menuAccelerators.size());
-        if (g_hAccelTable) {
-            // ::log("Created accelerator table with " + std::to_string(g_menuAccelerators.size()) + " entries");
-        }
     }
 }
 
@@ -4722,7 +4652,6 @@ std::string setMenuItemAccelerator(HMENU menu, UINT menuId, const std::string& a
     }
 
     if (vkCode == 0) {
-        // ::log("Failed to parse accelerator key: " + accelerator);
         return "";
     }
 
@@ -5015,7 +4944,6 @@ CHROMEYUMM_EXPORT bool initCEF() {
             // Assign the current process to the job object
             // This ensures all child processes (CEF helpers) are part of this job
             AssignProcessToJobObject(g_job_object, GetCurrentProcess());
-            std::cout << "[CEF] Created job object for process tracking" << std::endl;
         }
     }
 
@@ -5036,7 +4964,6 @@ CHROMEYUMM_EXPORT bool initCEF() {
     char* localAppData = getenv("LOCALAPPDATA");
     if (localAppData) {
         userDataDir = buildAppDataPath(localAppData, g_chromeyummIdentifier, g_chromeyummChannel, "CEF", '\\');
-        std::cout << "[CEF] Using path: " << userDataDir << std::endl;
     } else {
         // Fallback to executable directory if LOCALAPPDATA not available
         userDataDir = buildAppDataPath(exePath, g_chromeyummIdentifier, g_chromeyummChannel, "cef_cache", '\\');
@@ -5069,7 +4996,6 @@ CHROMEYUMM_EXPORT bool initCEF() {
     int selectedPort = FindAvailableRemoteDebugPort(9222, 9232);
     if (selectedPort == 0) {
         selectedPort = 9222;
-        std::cout << "[CEF] Remote DevTools: no free port in 9222-9232, falling back to 9222" << std::endl;
     }
     g_remoteDebugPort = selectedPort;
     settings.remote_debugging_port = selectedPort;
@@ -5117,9 +5043,6 @@ CHROMEYUMM_EXPORT bool initCEF() {
 // Utility function for creating CEF request contexts with partition support
 CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partitionIdentifier,
                                                                uint32_t webviewId) {
-    printf("DEBUG CEF: CreateRequestContextForPartition called for webview %u, partition: %s\n",
-           webviewId, partitionIdentifier ? partitionIdentifier : "null");
-
     CefRequestContextSettings settings;
 
     if (!partitionIdentifier || !partitionIdentifier[0]) {
@@ -5149,14 +5072,10 @@ CefRefPtr<CefRequestContext> CreateRequestContextForPartition(const char* partit
 
                 settings.persist_session_cookies = true;
                 CefString(&settings.cache_path).FromString(cachePath);
-
-                printf("DEBUG CEF: Persistent partition '%s' using cache path: %s\n",
-                       partitionName.c_str(), cachePath.c_str());
             }
         } else {
             // Non-persistent partition - in-memory session
             settings.persist_session_cookies = false;
-            printf("DEBUG CEF: In-memory partition '%s'\n", identifier.c_str());
         }
     }
 
@@ -5363,9 +5282,6 @@ static std::shared_ptr<CEFView> createCEFView(uint32_t webviewId,
             g_cefClients[mapKey] = client;
             g_cefViews[mapKey] = view.get();
 
-            printf("CEF: Registered view with hwnd=%p (transparent=%d, sharedTexture=%d)\n",
-                   mapKey, transparent, sharedTexture);
-
             // Set browser on client for script execution
             client->SetBrowser(browser);
 
@@ -5441,7 +5357,7 @@ CHROMEYUMM_EXPORT void startEventLoop(const char* identifier, const char* name, 
 
     // Set up console control handler for graceful shutdown on Ctrl+C
     if (!SetConsoleCtrlHandler(ConsoleControlHandler, TRUE)) {
-        std::cout << "[CEF] Warning: Failed to set console control handler" << std::endl;
+        ::log("Warning: Failed to set console control handler");
     }
     
     // Create a hidden message-only window for dispatching
@@ -5508,7 +5424,6 @@ CHROMEYUMM_EXPORT void startEventLoop(const char* identifier, const char* name, 
                 DispatchMessage(&msg);
             }
             // Clean up after shutdown
-            std::cout << "[CEF] CEF message loop ended, performing cleanup..." << std::endl;
             TerminateCEFHelperProcesses();
 
             // Close job object
@@ -6082,9 +5997,6 @@ CHROMEYUMM_EXPORT HWND createWindowWithFrameAndStyleFromWorker(
             if (!isCustomChrome && g_applicationMenu) {
                 if (SetMenu(hwnd, g_applicationMenu)) {
                     DrawMenuBar(hwnd);
-                    // char logMsg[256];
-                    // sprintf_s(logMsg, "Applied application menu to new window: HWND=%p", hwnd);
-                    // ::log(logMsg);
                 } else {
                     ::log("Failed to apply application menu to new window");
                 }
@@ -8004,7 +7916,6 @@ CHROMEYUMM_EXPORT NSStatusItem* createTray(uint32_t trayId, const char *title, c
                         uint32_t width, uint32_t height, ZigStatusItemHandler zigTrayItemHandler) {
     
     return MainThreadDispatcher::dispatch_sync([=]() -> NSStatusItem* {
-        // ::log("Creating system tray icon");
         
         NSStatusItem* statusItem = new NSStatusItem();
         statusItem->trayId = trayId;
@@ -8106,11 +8017,7 @@ CHROMEYUMM_EXPORT NSStatusItem* createTray(uint32_t trayId, const char *title, c
         }
         
         // Add to system tray
-        if (Shell_NotifyIcon(NIM_ADD, &statusItem->nid)) {
-            // char successMsg[256];
-            // sprintf_s(successMsg, "System tray icon created successfully: ID=%u, HWND=%p", trayId, statusItem->hwnd);
-            // ::log(successMsg);
-        } else {
+        if (!Shell_NotifyIcon(NIM_ADD, &statusItem->nid)) {
             DWORD error = GetLastError();
             char errorMsg[256];
             sprintf_s(errorMsg, "ERROR: Failed to add icon to system tray: %lu", error);

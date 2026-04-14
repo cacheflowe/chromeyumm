@@ -29,6 +29,7 @@ Thumbs.db
 
 # Extras
 .claude/
+_dumpbin_out.txt
 
 # Assets
 _assets/

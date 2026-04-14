@@ -14,6 +14,7 @@
 | Helper process names incomplete | Only 2 of 6 CEF helpers get GPU preference | P3 | — | Blocked on Bun | Waiting |
 | No crash telemetry | Silent failures in production | P2 | — | — | Not started |
 | Scattered debug panel code | `debugEl` + stats.js + slot overlay | P2 | — | — | Not started |
+| Debug printf/cout noise | ~50 debug print statements in cef-wrapper.cpp | P2 | — | v1.0.6 | **Done** |
 
 ## Stripping Plan
 
