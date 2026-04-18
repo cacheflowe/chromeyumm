@@ -96,6 +96,10 @@ export class BrowserWindow {
     native.symbols.setWindowFullScreen(this.ptr, value);
   }
 
+  saveScreenshot(format: "png" | "bmp" = "png"): boolean {
+    return !!native.symbols.saveWebviewScreenshot(this.webviewId, cs(format));
+  }
+
   // ── Spout output ──────────────────────────────────────────────────────────
 
   startSpout(senderName: string): boolean {

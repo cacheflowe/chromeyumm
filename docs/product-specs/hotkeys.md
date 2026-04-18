@@ -17,6 +17,7 @@ To avoid hijacking key combos from other applications, hotkeys are **suspended w
 | **Ctrl+R** | Reload content | `executeJavascript("location.reload()")` | Always |
 | **Ctrl+F** | Toggle alwaysOnTop | Applies to display windows (D3D) or master (Spout) | Always |
 | **Ctrl+D** | Toggle debug panel + overlay | Calls `window.__chromeyummToggle()` | Auto-injected; works on any page |
+| **Ctrl+S** | Save browser screenshot | Captures full browser surface to `Downloads/chromeyumm-screenshot-*.png` (BMP fallback) | Always |
 | **Escape** | Quit cleanly | Stops Spout, destroys display windows, `process.exit(0)` | Always |
 
 ## Interactive vs Output Mode (Ctrl+M)

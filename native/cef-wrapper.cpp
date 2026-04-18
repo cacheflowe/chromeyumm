@@ -95,6 +95,7 @@ using namespace chromeyumm;
 // regardless of whether SpoutDX is available.
 #include <d3d11_1.h>    // ID3D11Device1::OpenSharedResource1 (DXGI NT handles)
 #include <dxgi1_5.h>    // IDXGIFactory5 (tearing support), IDXGISwapChain1 (flip swap chain)
+#include <wincodec.h>   // WIC PNG encoding
 
 #if __has_include("SpoutDX.h")
 #include "SpoutDX.h"
@@ -117,6 +118,7 @@ class spoutDX;
 #pragma comment(lib, "d2d1.lib")
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "windowscodecs.lib")
 // d3d11.lib / dxgi.lib: added by build.ts when SpoutDX is present.
 
 
@@ -349,6 +351,211 @@ static bool isTearingSupported() {
         ::log("DXGI: ALLOW_TEARING " + std::string(g_tearingSupported ? "supported" : "not supported"));
     }
     return g_tearingSupported;
+}
+
+static std::wstring buildScreenshotPathInDownloads(const wchar_t* extension) {
+    wchar_t* downloadsPath = nullptr;
+    HRESULT hr = SHGetKnownFolderPath(FOLDERID_Downloads, 0, NULL, &downloadsPath);
+    if (FAILED(hr) || !downloadsPath) return L"";
+
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+
+    wchar_t filename[128] = {};
+    swprintf_s(filename,
+               L"chromeyumm-screenshot-%04d%02d%02d-%02d%02d%02d.%s",
+               st.wYear,
+               st.wMonth,
+               st.wDay,
+               st.wHour,
+               st.wMinute,
+               st.wSecond,
+               extension);
+
+    std::wstring path = downloadsPath;
+    CoTaskMemFree(downloadsPath);
+    path += L"\\";
+    path += filename;
+
+    std::wstring basePath = path;
+    std::wstring ext = L".";
+    ext += extension;
+    size_t dotPos = path.find_last_of(L'.');
+    if (dotPos != std::wstring::npos) {
+        basePath = path.substr(0, dotPos);
+    }
+
+    int counter = 1;
+    while (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        path = basePath + L" (" + std::to_wstring(counter) + L")" + ext;
+        counter++;
+    }
+
+    return path;
+}
+
+static bool copySwapChainBackbufferBgra(FrameOutputHostState& state,
+                                        std::vector<uint8_t>& outPixels,
+                                        int& outWidth,
+                                        int& outHeight) {
+    if (!state.swapChain || !state.d3dDevice || !state.d3dContext) return false;
+
+    ID3D11Texture2D* backBuffer = nullptr;
+    HRESULT hr = state.swapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&backBuffer);
+    if (FAILED(hr) || !backBuffer) return false;
+
+    D3D11_TEXTURE2D_DESC desc = {};
+    backBuffer->GetDesc(&desc);
+    if (desc.Width == 0 || desc.Height == 0) {
+        backBuffer->Release();
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC stagingDesc = desc;
+    stagingDesc.BindFlags = 0;
+    stagingDesc.MiscFlags = 0;
+    stagingDesc.Usage = D3D11_USAGE_STAGING;
+    stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+
+    ID3D11Texture2D* stagingTex = nullptr;
+    hr = state.d3dDevice->CreateTexture2D(&stagingDesc, nullptr, &stagingTex);
+    if (FAILED(hr) || !stagingTex) {
+        backBuffer->Release();
+        return false;
+    }
+
+    state.d3dContext->CopyResource(stagingTex, backBuffer);
+
+    D3D11_MAPPED_SUBRESOURCE mapped = {};
+    hr = state.d3dContext->Map(stagingTex, 0, D3D11_MAP_READ, 0, &mapped);
+    if (FAILED(hr)) {
+        stagingTex->Release();
+        backBuffer->Release();
+        return false;
+    }
+
+    outWidth = static_cast<int>(desc.Width);
+    outHeight = static_cast<int>(desc.Height);
+    const size_t rowBytes = static_cast<size_t>(outWidth) * 4;
+    outPixels.resize(rowBytes * static_cast<size_t>(outHeight));
+
+    const uint8_t* src = reinterpret_cast<const uint8_t*>(mapped.pData);
+    uint8_t* dst = outPixels.data();
+    for (int y = 0; y < outHeight; ++y) {
+        std::memcpy(dst + static_cast<size_t>(y) * rowBytes,
+                    src + static_cast<size_t>(y) * mapped.RowPitch,
+                    rowBytes);
+    }
+
+    state.d3dContext->Unmap(stagingTex, 0);
+    stagingTex->Release();
+    backBuffer->Release();
+    return true;
+}
+
+static bool writeBgraToBmp(const std::wstring& filePath,
+                           const std::vector<uint8_t>& bgra,
+                           int width,
+                           int height) {
+    if (width <= 0 || height <= 0 || bgra.empty()) return false;
+
+    const size_t rowBytes = static_cast<size_t>(width) * 4;
+    const size_t pixelBytes = rowBytes * static_cast<size_t>(height);
+    if (bgra.size() < pixelBytes) return false;
+
+    BITMAPFILEHEADER fileHeader = {};
+    BITMAPINFOHEADER infoHeader = {};
+    fileHeader.bfType = 0x4D42; // BM
+    fileHeader.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+    fileHeader.bfSize = static_cast<DWORD>(fileHeader.bfOffBits + pixelBytes);
+
+    infoHeader.biSize = sizeof(BITMAPINFOHEADER);
+    infoHeader.biWidth = width;
+    infoHeader.biHeight = height; // bottom-up
+    infoHeader.biPlanes = 1;
+    infoHeader.biBitCount = 32;
+    infoHeader.biCompression = BI_RGB;
+    infoHeader.biSizeImage = static_cast<DWORD>(pixelBytes);
+
+    std::ofstream out(filePath, std::ios::binary);
+    if (!out.is_open()) return false;
+
+    out.write(reinterpret_cast<const char*>(&fileHeader), sizeof(fileHeader));
+    out.write(reinterpret_cast<const char*>(&infoHeader), sizeof(infoHeader));
+
+    for (int y = height - 1; y >= 0; --y) {
+        const uint8_t* row = bgra.data() + static_cast<size_t>(y) * rowBytes;
+        out.write(reinterpret_cast<const char*>(row), rowBytes);
+    }
+
+    return out.good();
+}
+
+static bool writeBgraToPng(const std::wstring& filePath,
+                           const std::vector<uint8_t>& bgra,
+                           int width,
+                           int height) {
+    if (width <= 0 || height <= 0 || bgra.empty()) return false;
+
+    HRESULT initHr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    const bool shouldUninitialize = (initHr == S_OK || initHr == S_FALSE);
+
+    IWICImagingFactory* factory = nullptr;
+    IWICStream* stream = nullptr;
+    IWICBitmapEncoder* encoder = nullptr;
+    IWICBitmapFrameEncode* frame = nullptr;
+    IPropertyBag2* props = nullptr;
+
+    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory,
+                                  nullptr,
+                                  CLSCTX_INPROC_SERVER,
+                                  IID_PPV_ARGS(&factory));
+    if (FAILED(hr) || !factory) goto cleanup;
+
+    hr = factory->CreateStream(&stream);
+    if (FAILED(hr) || !stream) goto cleanup;
+
+    hr = stream->InitializeFromFilename(filePath.c_str(), GENERIC_WRITE);
+    if (FAILED(hr)) goto cleanup;
+
+    hr = factory->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder);
+    if (FAILED(hr) || !encoder) goto cleanup;
+
+    hr = encoder->Initialize(stream, WICBitmapEncoderNoCache);
+    if (FAILED(hr)) goto cleanup;
+
+    hr = encoder->CreateNewFrame(&frame, &props);
+    if (FAILED(hr) || !frame) goto cleanup;
+
+    hr = frame->Initialize(props);
+    if (FAILED(hr)) goto cleanup;
+
+    hr = frame->SetSize(static_cast<UINT>(width), static_cast<UINT>(height));
+    if (FAILED(hr)) goto cleanup;
+
+    WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
+    hr = frame->SetPixelFormat(&format);
+    if (FAILED(hr) || format != GUID_WICPixelFormat32bppBGRA) goto cleanup;
+
+    hr = frame->WritePixels(static_cast<UINT>(height),
+                            static_cast<UINT>(width * 4),
+                            static_cast<UINT>(bgra.size()),
+                            const_cast<BYTE*>(bgra.data()));
+    if (FAILED(hr)) goto cleanup;
+
+    hr = frame->Commit();
+    if (FAILED(hr)) goto cleanup;
+
+    hr = encoder->Commit();
+
+cleanup:
+    if (props) props->Release();
+    if (frame) frame->Release();
+    if (encoder) encoder->Release();
+    if (stream) stream->Release();
+    if (factory) factory->Release();
+    if (shouldUninitialize) CoUninitialize();
+    return SUCCEEDED(hr);
 }
 
 // Helper: create a DXGI flip swap chain on an HWND for DWM thumbnailing.
@@ -6798,6 +7005,64 @@ CHROMEYUMM_EXPORT void stopD3DOutput(uint32_t webviewId) {
     }
 
     ::log("D3DOutput: stopped for webviewId " + std::to_string(webviewId));
+}
+
+CHROMEYUMM_EXPORT bool saveWebviewScreenshot(uint32_t webviewId, const char* formatUtf8) {
+    bool ok = false;
+    std::string format = formatUtf8 ? formatUtf8 : "png";
+    std::transform(format.begin(), format.end(), format.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (format != "bmp") format = "png";
+
+    MainThreadDispatcher::dispatch_sync([&]() {
+        auto it = g_frameOutputHosts.find(webviewId);
+        if (it == g_frameOutputHosts.end()) {
+            ::log("Screenshot: no frame-output host for webviewId " + std::to_string(webviewId));
+            return;
+        }
+
+        auto& state = it->second;
+        if ((!state.d3dDevice || !state.d3dContext || !state.swapChain) && !ensureFrameTransportHostRuntime(webviewId)) {
+            ::log("Screenshot: failed to initialize D3D runtime for webviewId " + std::to_string(webviewId));
+            return;
+        }
+
+        std::vector<uint8_t> bgra;
+        int width = 0;
+        int height = 0;
+        if (!copySwapChainBackbufferBgra(state, bgra, width, height)) {
+            ::log("Screenshot: no frame available yet for webviewId " + std::to_string(webviewId));
+            return;
+        }
+
+        std::wstring outputPath = buildScreenshotPathInDownloads(format == "bmp" ? L"bmp" : L"png");
+        if (outputPath.empty()) {
+            ::log("Screenshot: failed to resolve Downloads folder path");
+            return;
+        }
+
+        bool saved = false;
+        if (format == "bmp") {
+            saved = writeBgraToBmp(outputPath, bgra, width, height);
+        } else {
+            saved = writeBgraToPng(outputPath, bgra, width, height);
+            if (!saved) {
+                outputPath = buildScreenshotPathInDownloads(L"bmp");
+                saved = !outputPath.empty() && writeBgraToBmp(outputPath, bgra, width, height);
+                format = "bmp";
+            }
+        }
+
+        if (saved) {
+            ::log("Screenshot: saved " + std::to_string(width) + "x" + std::to_string(height) +
+                  " " + format + " to " + WStringToString(outputPath));
+            ok = true;
+        } else {
+            ::log("Screenshot: failed to write image file");
+        }
+    });
+
+    return ok;
 }
 
 // ---------------------------------------------------------------------------

@@ -63,6 +63,7 @@ EXPORTS
     removeTray
     resizeWebview
     restoreWindow
+    saveWebviewScreenshot
     setAppReopenHandler
     setApplicationMenu
     setDockIconVisible

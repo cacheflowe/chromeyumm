@@ -112,6 +112,7 @@ export const native = (() => {
         returns: FFIType.void,
       },
       webviewToggleDevTools: { args: [FFIType.ptr], returns: FFIType.void },
+      saveWebviewScreenshot: { args: [FFIType.u32, FFIType.cstring], returns: FFIType.bool },
 
       // ── D3D output ──────────────────────────────────────────────────────
       startD3DOutput: { args: [FFIType.u32], returns: FFIType.bool },

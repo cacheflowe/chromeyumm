@@ -538,6 +538,7 @@ function buildChromeyummState() {
     hotkeys.push({ key: "Ctrl+Shift+M", action: "reset windows" });
   }
   hotkeys.push({ key: "Ctrl+D", action: "toggle debug panel" });
+  hotkeys.push({ key: "Ctrl+S", action: "save screenshot (Downloads)" });
   hotkeys.push({ key: "F12", action: "toggle DevTools" });
   hotkeys.push({ key: "Escape", action: "quit" });
 
@@ -650,6 +651,15 @@ GlobalShortcut.register("CommandOrControl+F", () => {
 GlobalShortcut.register("CommandOrControl+D", () => {
   console.log("[chromeyumm] Ctrl+D: toggling debug panel");
   master.webview.executeJavascript(TOGGLE_PANEL_SCRIPT);
+});
+
+GlobalShortcut.register("CommandOrControl+S", () => {
+  const ok = master.saveScreenshot("png");
+  if (ok) {
+    console.log("[chromeyumm] Ctrl+S: screenshot saved to Downloads");
+  } else {
+    console.warn("[chromeyumm] Ctrl+S: screenshot failed (no frame yet?)");
+  }
 });
 
 GlobalShortcut.register("F12", () => {
