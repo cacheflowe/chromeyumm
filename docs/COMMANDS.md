@@ -19,7 +19,8 @@ All commands run from the project root unless noted.
 | `bun start` | Run compiled exe from project root |
 | `dist/chromeyumm.exe` | Run compiled exe directly |
 | `bun run feature-check` | Launch feature detection page in a 900×800 interactive window (ignores display-config.json) |
-| `bun run demo` | Start R3F Vite dev server + chromeyumm browser together |
+| `bun run demo-r3f` | Start R3F Vite dev server |
+| `bun run demo-p5` | Start P5 Vite dev server |
 
 ## Vendor Setup (first time / new machine)
 

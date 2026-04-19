@@ -83,7 +83,8 @@ dist/chromeyumm.exe            # run (configure display-config.json first)
 |---|---|
 | `bun run start` | Run `dist/chromeyumm.exe` |
 | `bun run feature-check` | Feature detection page — WebGL, codecs, hardware APIs, CEF version |
-| `bun run demo` | Start R3F Vite dev server + chromeyumm browser together |
+| `bun run demo-r3f` | Start R3F Vite dev server |
+| `bun run demo-p5` | Start P5 Vite dev server |
 
 ### Test & Diagnostics
 
