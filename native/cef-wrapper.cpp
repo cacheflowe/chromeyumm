@@ -167,6 +167,7 @@ struct DisplayWindowInputState {
     uint32_t webviewId;
     int      sourceX, sourceY, sourceW, sourceH; // virtual canvas rect
     bool     showCursor;
+    bool     mouseTracking = false;
     CefRefPtr<CefBrowser> browser; // cached — resolved once at enable time
 };
 static std::map<HWND, DisplayWindowInputState> g_displayWindowInputMap;
@@ -1673,7 +1674,25 @@ public:
 
         switch (message) {
             case WM_MOUSEMOVE:
+                if (!mouse_tracking_) {
+                    TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, parent_, 0 };
+                    TrackMouseEvent(&tme);
+                    mouse_tracking_ = true;
+                }
                 host->SendMouseMoveEvent(mouse_event, false);
+                break;
+
+            case WM_MOUSELEAVE:
+                mouse_tracking_ = false;
+                host->SendMouseMoveEvent(mouse_event, true);
+                break;
+
+            case WM_LBUTTONDBLCLK:
+                host->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 2);
+                break;
+
+            case WM_RBUTTONDBLCLK:
+                host->SendMouseClickEvent(mouse_event, MBT_RIGHT, false, 2);
                 break;
 
             case WM_LBUTTONDOWN:
@@ -1747,6 +1766,7 @@ private:
     int buffer_height_;
     size_t buffer_size_;
     CefRefPtr<CefBrowser> browser_;
+    bool mouse_tracking_ = false;
 };
 
 // CEF Render Handler for off-screen rendering (OSR) mode
@@ -3462,9 +3482,14 @@ public:
         if (osr_window) {
             if (message >= WM_MOUSEFIRST && message <= WM_MOUSELAST) {
                 osr_window->HandleMouseEvent(message, wParam, lParam);
+            } else if (message == WM_MOUSELEAVE) {
+                osr_window->HandleMouseEvent(message, wParam, lParam);
             } else if (message >= WM_KEYFIRST && message <= WM_KEYLAST) {
                 osr_window->HandleKeyEvent(message, wParam, lParam);
             }
+        }
+        if (message == WM_SETFOCUS || message == WM_KILLFOCUS) {
+            if (browser) browser->GetHost()->SetFocus(message == WM_SETFOCUS);
         }
     }
 
@@ -3540,6 +3565,7 @@ private:
     
     // Input management
     AbstractView* m_activeWebView = nullptr;  // Currently active webview for input
+    bool m_mouseTracking = false;
     
     // Window procedure for the container
     static LRESULT CALLBACK ContainerWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -3572,7 +3598,11 @@ private:
             case WM_MOUSEMOVE: {
                 POINT mousePos = {GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
                 UpdateActiveWebviewForMousePosition(mousePos);
-                // Fall through to forward to OSR if present
+                if (!m_mouseTracking) {
+                    TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, m_hwnd, 0 };
+                    TrackMouseEvent(&tme);
+                    m_mouseTracking = true;
+                }
                 auto viewIt = g_cefViews.find(m_hwnd);
                 if (viewIt != g_cefViews.end()) {
                     CEFView* cefView = static_cast<CEFView*>(viewIt->second);
@@ -3588,6 +3618,8 @@ private:
             case WM_MBUTTONDOWN:
             case WM_MBUTTONUP:
             case WM_MOUSEWHEEL:
+            case WM_LBUTTONDBLCLK:
+            case WM_RBUTTONDBLCLK:
             case WM_KEYDOWN:
             case WM_KEYUP:
             case WM_CHAR:
@@ -3610,6 +3642,26 @@ private:
                     if (cefView && cefView->isOSRMode()) {
                         cefView->HandleWindowMessage(msg, wParam, lParam);
                     }
+                }
+                break;
+            }
+
+            case WM_MOUSELEAVE: {
+                m_mouseTracking = false;
+                auto viewIt = g_cefViews.find(m_hwnd);
+                if (viewIt != g_cefViews.end()) {
+                    CEFView* cefView = static_cast<CEFView*>(viewIt->second);
+                    if (cefView && cefView->isOSRMode()) cefView->HandleWindowMessage(msg, wParam, lParam);
+                }
+                break;
+            }
+
+            case WM_SETFOCUS:
+            case WM_KILLFOCUS: {
+                auto viewIt = g_cefViews.find(m_hwnd);
+                if (viewIt != g_cefViews.end()) {
+                    CEFView* cefView = static_cast<CEFView*>(viewIt->second);
+                    if (cefView && cefView->isOSRMode()) cefView->HandleWindowMessage(msg, wParam, lParam);
                 }
                 break;
             }
@@ -6599,6 +6651,7 @@ static LRESULT CALLBACK DisplayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LP
     case WM_LBUTTONDOWN: case WM_LBUTTONUP:
     case WM_RBUTTONDOWN: case WM_RBUTTONUP:
     case WM_MBUTTONDOWN: case WM_MBUTTONUP:
+    case WM_LBUTTONDBLCLK: case WM_RBUTTONDBLCLK:
     case WM_MOUSEWHEEL: {
         auto inputIt = g_displayWindowInputMap.find(hwnd);
         if (inputIt == g_displayWindowInputMap.end()) break;
@@ -6622,9 +6675,18 @@ static LRESULT CALLBACK DisplayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         if (GetKeyState(VK_MENU) & 0x8000) me.modifiers |= EVENTFLAG_ALT_DOWN;
 
         if (msg == WM_MOUSEMOVE) {
+            if (!dis.mouseTracking) {
+                TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE, hwnd, 0 };
+                TrackMouseEvent(&tme);
+                dis.mouseTracking = true;
+            }
             host->SendMouseMoveEvent(me, false);
         } else if (msg == WM_MOUSEWHEEL) {
             host->SendMouseWheelEvent(me, 0, GET_WHEEL_DELTA_WPARAM(wParam));
+        } else if (msg == WM_LBUTTONDBLCLK) {
+            host->SendMouseClickEvent(me, MBT_LEFT, false, 2);
+        } else if (msg == WM_RBUTTONDBLCLK) {
+            host->SendMouseClickEvent(me, MBT_RIGHT, false, 2);
         } else {
             bool down = (msg == WM_LBUTTONDOWN || msg == WM_RBUTTONDOWN || msg == WM_MBUTTONDOWN);
             auto btn  = (msg == WM_LBUTTONDOWN || msg == WM_LBUTTONUP) ? MBT_LEFT
@@ -6633,6 +6695,25 @@ static LRESULT CALLBACK DisplayWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             host->SendMouseClickEvent(me, btn, !down, 1);
             if (!down) ReleaseCapture();
         }
+        return 0;
+    }
+    case WM_MOUSELEAVE: {
+        auto inputIt = g_displayWindowInputMap.find(hwnd);
+        if (inputIt == g_displayWindowInputMap.end()) break;
+        auto& dis = inputIt->second;
+        dis.mouseTracking = false;
+        if (!dis.browser) break;
+        CefMouseEvent me = {};
+        dis.browser->GetHost()->SendMouseMoveEvent(me, true);
+        return 0;
+    }
+    case WM_SETFOCUS:
+    case WM_KILLFOCUS: {
+        auto inputIt = g_displayWindowInputMap.find(hwnd);
+        if (inputIt == g_displayWindowInputMap.end()) break;
+        auto& dis = inputIt->second;
+        if (!dis.browser) break;
+        dis.browser->GetHost()->SetFocus(msg == WM_SETFOCUS);
         return 0;
     }
     default:
