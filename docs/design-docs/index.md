@@ -11,6 +11,7 @@ Architecture decision records for Chromeyumm. Each doc captures context, options
 | [spout-input-shared-memory.md](spout-input-shared-memory.md) | Accepted | 2025-01 | Two-tier shared memory bridge for Spout input |
 | [ddp-frame-output.md](ddp-frame-output.md) | Accepted | 2025-04 | DDP output via unified frame transport + IOutputProtocol |
 | [harness-engineering.md](harness-engineering.md) | Reference | 2025-01 | Docs system methodology |
+| [multi-machine-sync.md](multi-machine-sync.md) | Proposed | 2026-04 | UDP shared clock + frame-hold for multi-PC display sync |
 
 ## Related
 

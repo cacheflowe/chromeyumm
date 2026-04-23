@@ -10,6 +10,7 @@
 Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).exe` and friends to `helperNames` in `src/app/index.ts` for the GPU-preference registry writes. Currently only `chromeyumm.exe` and `chromeyumm Helper.exe` are registered.
 
 ## Backlog
+- Multi-machine frame sync: L1 (UDP shared clock → `window.__sharedClock`) + optional L2 (frame-hold before `Present`) — see [product-specs/multi-machine-sync.md](../product-specs/multi-machine-sync.md)
 - DDP protocol polish: partial-update packetization (keepalive + stat counters done)
 - Crash/error logging to disk
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
