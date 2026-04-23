@@ -39,14 +39,14 @@ new p5((p: p5) => {
   let unit = 1;
 
   p.setup = () => {
-    p.createCanvas(canvasW, canvasH, p.WEBGL);
-    unit = Math.max(p.width, p.height) * 0.0013;
+    p.createCanvas(canvasW + 16, canvasH, p.WEBGL);
+    unit = Math.max(canvasW, canvasH) * 0.0013;
     engine = Engine.create({ gravity: { x: 0, y: 0.6, scale: 0.001 } });
 
     const wallThick = 50 * unit;
-    addStatic(p.width / 2, p.height + wallThick / 2, p.width + 200 * unit, wallThick, 0);
-    addStatic(-wallThick / 2, p.height / 2, wallThick, p.height + 200 * unit, 0);
-    addStatic(p.width + wallThick / 2, p.height / 2, wallThick, p.height + 200 * unit, 0);
+    addStatic(canvasW / 2, canvasH + wallThick / 2, canvasW + 200 * unit, wallThick, 0);
+    addStatic(-wallThick / 2, canvasH / 2, wallThick, canvasH + 200 * unit, 0);
+    addStatic(canvasW + wallThick / 2, canvasH / 2, wallThick, canvasH + 200 * unit, 0);
   };
 
   p.draw = () => {
@@ -59,12 +59,12 @@ new p5((p: p5) => {
     const now = p.millis();
     const margin = 80 * unit;
     if (now - lastSpawn > SPAWN_MS && shapes.length < MAX_SHAPES) {
-      spawn(p.random(margin, p.width - margin), p.random(-margin, -margin * 0.12));
+      spawn(p.random(margin, canvasW - margin), p.random(-margin, -margin * 0.12));
       lastSpawn = now;
     }
 
     for (let i = shapes.length - 1; i >= 0; i--) {
-      if (shapes[i].position.y > p.height + 200 * unit) {
+      if (shapes[i].position.y > canvasH + 200 * unit) {
         Composite.remove(engine.world, shapes[i]);
         shapes.splice(i, 1);
       }
@@ -105,6 +105,12 @@ new p5((p: p5) => {
     p.fill(0, 100);
     p.noStroke();
     p.rect(0, 0, p.width, p.height);
+
+    // test full background color
+    // p.background(0, 255, 0);
+
+    // copy canvas to 32px over, at half size, to simulate a second display with different source region
+    p.image(p.get(0, 0, canvasW, canvasH), 32, 0, canvasW / 2, canvasH / 2);
   };
 
   p.keyPressed = () => {
