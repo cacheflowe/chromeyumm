@@ -34,7 +34,7 @@ const VENDOR_DIR = join(NATIVE_DIR, "vendor");
 
 // CEF: find latest at https://cef-builds.spotifycdn.com/index.html
 // Format: "VERSION+HASH+chromium-CHROMIUM_VERSION"
-const DEFAULT_CEF_VERSION = "146.0.10+g8219561+chromium-146.0.7680.179";
+const DEFAULT_CEF_VERSION = "147.0.9+g2812b73+chromium-147.0.7727.49";
 
 // Spout2: find releases at https://github.com/leadedge/Spout2/releases
 const DEFAULT_SPOUT_TAG = "2.007.014";
@@ -73,7 +73,11 @@ async function fetchLatestCefVersion(): Promise<string> {
     throw new Error("Unexpected CEF index format — check https://cef-builds.spotifycdn.com/index.html manually");
   }
 
-  // Prefer a version that ships a standard distribution
+  // Prefer a stable-channel version that ships a standard distribution
+  for (const v of platform.versions) {
+    if (v.channel === "stable" && v.files?.some((f: any) => f.type === "standard")) return v.cef_version as string;
+  }
+  // Fall back to any version with a standard distribution
   for (const v of platform.versions) {
     if (v.files?.some((f: any) => f.type === "standard")) return v.cef_version as string;
   }
