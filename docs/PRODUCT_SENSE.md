@@ -28,6 +28,7 @@
 | Electrobun heritage debt | Accepted (being stripped) | ~900 lines of unused code (ASAR, WGPU shims, update/packaging). Planned removal. |
 | Spout input CPU cost | Accepted | +10% Intel / +30% NVIDIA is inherent to CPU-mediated readback. GPU-direct paths investigated but blocked by cross-device EGL limitations. |
 | OSR master always hidden in output mode | Accepted | Master HWND is black in OSR — content only in shared texture. Ctrl+M toggles to interactive mode to see the master window. |
+| Interactive mode is not a full browser | Accepted | OSR requires manual input forwarding — CEF never receives events natively. Common inputs work, but native dropdowns, drag-and-drop, IME, and context menus are absent or degraded. Chromeyumm is not suitable as an interactive UI surface; interactive mode exists for development convenience only. |
 
 ## Non-Goals
 

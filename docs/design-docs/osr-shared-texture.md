@@ -34,6 +34,7 @@ OSR with `shared_texture_enabled=1`. This is the only path that delivers a GPU-n
 - Master HWND is always black (CEF doesn't paint to it in OSR mode) — content only in shared texture
 - Requires careful D3D11 device initialization order — device must be created before `OnAcceleratedPaint` first fires
 - `loadURL()` doesn't work — must use `executeJavascript("location.reload()")`
+- **Input forwarding is manual and incomplete.** In windowed CEF, the OS delivers input directly to CEF's HWND — everything works. In OSR there is no HWND, so the host application must intercept and re-inject every input event via `CefBrowserHost::Send*Event`. Common events are covered, but native popups (`<select>`, context menus), drag-and-drop, and IME are absent. Interactive mode is a development convenience, not a production UI surface.
 
 ## Related
 - [cef-over-electron.md](cef-over-electron.md) — Why CEF

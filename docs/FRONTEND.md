@@ -134,6 +134,24 @@ The app injects scripts via `executeJavascript()`:
 | Ctrl+D | Toggle debug panel / overlay |
 | Escape | Quit cleanly |
 
+## Interactive Mode and OSR Input Constraints
+
+Chromeyumm uses CEF's **Off-Screen Rendering (OSR)** mode. This is the architectural choice that enables the GPU texture pipeline — but it has a direct cost for interactivity.
+
+In normal CEF windowed mode, CEF owns an `HWND` and the OS delivers mouse/keyboard events to it directly. Everything works as in a normal browser with no extra wiring.
+
+In OSR mode, there is no visible CEF window. The OS has nowhere to send input, so Chromeyumm must intercept events on its own windows and manually forward them into CEF's API. This forwarding is incomplete by design — it covers the common cases (mouse move/click/scroll, keyboard, double-click, focus, mouse-leave) but it is not a full browser input stack. Things that are missing or degraded:
+
+- Native `<select>` dropdowns (OS popup, not composited into OSR surface)
+- Drag-and-drop (requires OLE `IDropTarget` — not implemented)
+- IME / CJK text input (requires `WM_IME_*` — not implemented)
+- Context menus (popup, same problem as `<select>`)
+- Any browser UI that relies on OS-native widget rendering
+
+**Bottom line:** Chromeyumm is built for generative, time-driven visual content — not for interactive UI surfaces. If your content needs rich browser UI (forms, menus, drag-and-drop), it will feel broken compared to a real browser. Use interactive mode for development convenience (reloading, debug panel, parameter tweaking), not as a product surface.
+
+For truly interactive installations (touch walls, visitor-facing screens), the right architecture is to run a separate normal browser or Electron app for the UI layer and route its output into Chromeyumm as a Spout texture.
+
 ## Known Limitations
 
 - `loadURL()` ignores its url argument — use `location.reload()` for content reload
