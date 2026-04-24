@@ -14,7 +14,6 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - DDP protocol polish: partial-update packetization (keepalive + stat counters done)
 - Crash/error logging to disk
 - Auto-detect monitor topology changes (replace manual Ctrl+Shift+M)
-- Replace `RegisterHotKey` with window-level accelerators (`TranslateAccelerator` or `WM_KEYDOWN`) — current approach suspends/resumes hotkeys on focus change which works well, but window-level shortcuts would be architecturally cleaner
 
 ## Completed
 
@@ -27,6 +26,7 @@ Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).
 - Permissive chromium flags — added `use-angle=d3d11`, `enable-gpu-rasterization`, `allow-file-access-from-files`, `allow-running-insecure-content`, `disable-site-isolation-trials`, `autoplay-policy=no-user-gesture-required`, `use-fake-ui-for-media-stream`, `enable-usermedia-screen-capturing`, `enable-experimental-web-platform-features`, `enable-webgpu-developer-features`. All overridable via `build.json` chromiumFlags.
 - NDW interactive input forwarding — `interactiveWindows: true` in display-config.json enables mouse event forwarding from borderless display windows to CEF (visitor-safe alternative to Ctrl+M interactive mode)
 - Hotkey suspend/resume hardening — removed flag-based early returns in `suspendHotkeys`/`resumeHotkeys`, resume now unconditionally unregisters+re-registers to clear stale OS state. Bun keepalive interval reduced from ~12 days to 250ms for reliable threadsafe callback delivery.
+- Window-level hotkeys — replaced `WH_KEYBOARD_LL` system hook + dedicated thread with `WM_KEYDOWN` interception in the main message loop. Eliminates the hook thread, system-wide interception, and foreground-window PID check.
 - Phase 1: PrintWindow multi-window output
 - Phase 2c: Windows Graphics Capture (Spout output)
 - Phase 2d: OSR OnAcceleratedPaint (Spout output) — **0% Intel, 15% NVIDIA**

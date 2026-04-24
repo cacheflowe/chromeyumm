@@ -131,6 +131,7 @@ class spoutDX;
 #define WM_DEVTOOLS_CREATE (WM_USER + 3)
 
 // Forward declarations
+static bool checkAndFireGlobalShortcut(UINT vk);
 class AbstractView;
 class ContainerView;
 class NSWindow;
@@ -5679,6 +5680,9 @@ CHROMEYUMM_EXPORT void startEventLoop(const char* identifier, const char* name, 
                 if (g_hAccelTable && TranslateAccelerator(msg.hwnd, g_hAccelTable, &msg)) {
                     continue;
                 }
+                if (msg.message == WM_KEYDOWN && checkAndFireGlobalShortcut((UINT)msg.wParam)) {
+                    continue;
+                }
                 TranslateMessage(&msg);
                 DispatchMessage(&msg);
             }
@@ -5697,8 +5701,10 @@ CHROMEYUMM_EXPORT void startEventLoop(const char* identifier, const char* name, 
             // Fall back to Windows message loop if CEF init fails
             MSG msg;
             while (GetMessage(&msg, NULL, 0, 0)) {
-                // Check for menu accelerators first
                 if (g_hAccelTable && TranslateAccelerator(msg.hwnd, g_hAccelTable, &msg)) {
+                    continue;
+                }
+                if (msg.message == WM_KEYDOWN && checkAndFireGlobalShortcut((UINT)msg.wParam)) {
                     continue;
                 }
                 TranslateMessage(&msg);
@@ -5710,8 +5716,10 @@ CHROMEYUMM_EXPORT void startEventLoop(const char* identifier, const char* name, 
         // Use Windows message loop if CEF is not available
         MSG msg;
         while (GetMessage(&msg, NULL, 0, 0)) {
-            // Check for menu accelerators first
             if (g_hAccelTable && TranslateAccelerator(msg.hwnd, g_hAccelTable, &msg)) {
+                continue;
+            }
+            if (msg.message == WM_KEYDOWN && checkAndFireGlobalShortcut((UINT)msg.wParam)) {
                 continue;
             }
             TranslateMessage(&msg);
@@ -8847,13 +8855,11 @@ std::string getMimeTypeForFile(const std::string& path) {
  * GLOBAL KEYBOARD SHORTCUTS
  * =============================================================================
  *
- * Implemented via WH_KEYBOARD_LL rather than RegisterHotKey. The hook
- * intercepts every keypress before it reaches any window. In the callback we
- * check whether our process owns the foreground window — if yes, we match
- * against registered shortcuts and fire the handler (swallowing the keypress);
- * if no, we call CallNextHookEx so the keypress reaches the active app
- * unchanged. No register/unregister cycle is needed, so focus transitions
- * never leave shortcuts in a broken or permanently-suspended state.
+ * Implemented as window-level WM_KEYDOWN interception in the main message loop.
+ * On each WM_KEYDOWN, checkAndFireGlobalShortcut() matches the key+modifiers
+ * against registered shortcuts and fires the callback, swallowing the message
+ * so it never reaches CEF or other windows. No hook thread, no system-wide
+ * hook, no register/unregister cycle needed.
  */
 
 typedef void (*GlobalShortcutCallback)(const char* accelerator);
@@ -8867,9 +8873,6 @@ struct ShortcutEntry {
 
 static std::vector<ShortcutEntry> g_shortcuts;
 static std::mutex                 g_shortcutMutex;
-static HHOOK                      g_keyboardHook = NULL;
-static std::thread                g_hotkeyThread;
-static bool                       g_hotkeyThreadRunning = false;
 
 // Helper to parse virtual key code from key string
 static UINT getVirtualKeyCode(const std::string& key) {
@@ -8934,40 +8937,16 @@ static UINT parseModifiers(const std::string& accelerator, std::string& outKey) 
     return modifiers;
 }
 
-// Low-level keyboard hook — intercepts all keypresses system-wide.
-// Only fires our callback when this process is the foreground owner.
-// No register/unregister cycle needed: focus-awareness is per-keypress.
-static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lParam) {
-    if (nCode != HC_ACTION)
-        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
-    if (wParam != WM_KEYDOWN && wParam != WM_SYSKEYDOWN)
-        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
-
-    KBDLLHOOKSTRUCT* kbs = reinterpret_cast<KBDLLHOOKSTRUCT*>(lParam);
-    const UINT vk = kbs->vkCode;
-
-    // Only fire when a chromeyumm window owns the foreground.
-    // NDWs no longer have WS_EX_NOACTIVATE, so they can become foreground
-    // normally (e.g. when clicked in deployment mode).
-    HWND fgHwnd = GetForegroundWindow();
-    DWORD fgPid = 0;
-    if (fgHwnd) GetWindowThreadProcessId(fgHwnd, &fgPid);
-    if (fgPid != GetCurrentProcessId())
-        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
-
-    // Skip bare modifier keys — they are never a complete shortcut.
-    if (vk == VK_CONTROL || vk == VK_LCONTROL || vk == VK_RCONTROL ||
-        vk == VK_SHIFT   || vk == VK_LSHIFT   || vk == VK_RSHIFT   ||
-        vk == VK_MENU    || vk == VK_LMENU    || vk == VK_RMENU    ||
-        vk == VK_LWIN    || vk == VK_RWIN)
-        return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
-
+// Match vk+modifiers against registered shortcuts and fire the callback.
+// Called from the main message loop on WM_KEYDOWN — no hook or extra thread needed.
+// Returns true if a shortcut fired (caller should swallow the message).
+static bool checkAndFireGlobalShortcut(UINT vk) {
+    if (!g_globalShortcutCallback) return false;
     const bool ctrl  = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
     const bool shift = (GetKeyState(VK_SHIFT)   & 0x8000) != 0;
-    const bool alt   = (kbs->flags & LLKHF_ALTDOWN) != 0;
-    const bool win   = (GetKeyState(VK_LWIN) & 0x8000) != 0 ||
-                       (GetKeyState(VK_RWIN) & 0x8000) != 0;
-
+    const bool alt   = (GetKeyState(VK_MENU)    & 0x8000) != 0;
+    const bool win   = (GetKeyState(VK_LWIN)    & 0x8000) != 0 ||
+                       (GetKeyState(VK_RWIN)    & 0x8000) != 0;
     std::lock_guard<std::mutex> lock(g_shortcutMutex);
     for (const auto& sc : g_shortcuts) {
         if (sc.vkCode != vk) continue;
@@ -8975,42 +8954,15 @@ static LRESULT CALLBACK LowLevelKeyboardProc(int nCode, WPARAM wParam, LPARAM lP
         if (((sc.modifiers & MOD_SHIFT)   != 0) != shift) continue;
         if (((sc.modifiers & MOD_ALT)     != 0) != alt)   continue;
         if (((sc.modifiers & MOD_WIN)     != 0) != win)   continue;
-        if (g_globalShortcutCallback)
-            g_globalShortcutCallback(sc.accelerator.c_str());
-        return 1; // swallow — don't pass to other apps or CEF
+        g_globalShortcutCallback(sc.accelerator.c_str());
+        return true;
     }
-    return CallNextHookEx(g_keyboardHook, nCode, wParam, lParam);
-}
-
-// Thread that installs the low-level keyboard hook and runs its message pump.
-static void hotkeyMessageLoop() {
-    g_keyboardHook = SetWindowsHookEx(WH_KEYBOARD_LL, LowLevelKeyboardProc,
-                                      GetModuleHandle(NULL), 0);
-    if (!g_keyboardHook) {
-        ::log("ERROR: SetWindowsHookEx(WH_KEYBOARD_LL) failed: " + std::to_string(GetLastError()));
-        return;
-    }
-
-    MSG msg;
-    while (g_hotkeyThreadRunning && GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-
-    if (g_keyboardHook) {
-        UnhookWindowsHookEx(g_keyboardHook);
-        g_keyboardHook = NULL;
-    }
+    return false;
 }
 
 // Set the callback for global shortcut events
 extern "C" CHROMEYUMM_EXPORT void setGlobalShortcutCallback(GlobalShortcutCallback callback) {
     g_globalShortcutCallback = callback;
-
-    if (!g_hotkeyThreadRunning && callback) {
-        g_hotkeyThreadRunning = true;
-        g_hotkeyThread = std::thread(hotkeyMessageLoop);
-    }
 }
 
 // Register a global keyboard shortcut
