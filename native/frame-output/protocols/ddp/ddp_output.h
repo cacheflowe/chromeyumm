@@ -1,8 +1,11 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "../../core/output_protocol.h"
@@ -53,6 +56,7 @@ private:
     bool SendDdpPackets(const uint8_t* data, size_t dataSize, uint64_t& packetsOut, uint64_t& bytesOut);
     uint8_t NextSequence();
     static int64_t NowMs();
+    void KeepaliveLoop();
 
 private:
     DdpOutputConfig config_;
@@ -68,6 +72,12 @@ private:
     std::atomic<uint64_t> bytesSent_{0};
     std::atomic<uint64_t> sendErrors_{0};
     std::atomic<int64_t>  lastSendTimeMs_{0};
+    // Protects previousRgbPayload_, previousPayloadWidth_, packetBuf_, sequence_,
+    // and stopKeepalive_ — accessed from both the CEF render thread and keepaliveThread_.
+    mutable std::mutex sendMutex_;
+    std::condition_variable keepaliveCv_;
+    bool stopKeepalive_ = false;
+    std::thread keepaliveThread_;
     std::vector<uint8_t> previousRgbPayload_;
     int previousPayloadWidth_ = 0;
     // Pre-allocated send buffer — avoids per-packet heap allocation in the hot path.

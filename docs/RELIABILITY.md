@@ -46,6 +46,14 @@
 **Symptom**: Calling `loadURL()` with a new URL has no effect.
 **Workaround**: Use `executeJavascript("location.reload()")` for content reload. Ctrl+R already uses this approach.
 
+### DDP LED Panel Flashing During Static Content
+
+**Symptom**: LED panels connected via DDP (network LED controller protocol) flash/go dark every 1-2 seconds when page content is static.
+**Cause**: CEF throttles/stops delivering paint callbacks when page content doesn't change (OSR optimization). The DDP output module was relying on `OnFrame` being called to resend keepalive data. Without periodic frames, the DDP controller times out and blanks the display.
+**Fix**: `DdpOutput` now runs a background keepalive thread that independently resends the last known frame every 100 ms during static content (detected when no new frames arrive). Animation is unaffected — the keepalive is silent when `lastSendTimeMs_` is constantly refreshed by incoming frames.
+**Implementation**: `KeepaliveLoop()` in `native/frame-output/protocols/ddp/ddp_output.cpp`. Runs in its own thread, wakes every 100 ms, holds `sendMutex_` during sends to coordinate with `OnFrame`. Interval is tuned to 100 ms (10 Hz) — matches thread wake frequency and controller expectations.
+**Related**: [ddp_output.cpp](../native/frame-output/protocols/ddp/ddp_output.cpp)
+
 ### FFI Callback Strings Are Garbage (Silent Failure)
 
 **Symptom**: C++ events fire correctly (visible in logs) but JS-side handlers never trigger. `did-navigate` doesn't dispatch, debug panel doesn't inject, keyboard shortcuts may not reach JS. No errors thrown — everything _appears_ to work on the native side.

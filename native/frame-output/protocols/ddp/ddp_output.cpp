@@ -14,7 +14,7 @@ namespace {
 constexpr int kDdpHeaderLength = 10;
 constexpr int kMaxPixelsPerPacket = 480;
 constexpr int kMaxDataLength = kMaxPixelsPerPacket * 3;
-constexpr int64_t kKeepaliveMs = 1000;
+constexpr int64_t kKeepaliveMs = 100;
 constexpr uint8_t kVersion1 = 0x40;
 constexpr uint8_t kPush = 0x01;
 constexpr uint8_t kDataTypeRgb888 = 0x0b;
@@ -57,11 +57,19 @@ bool DdpOutput::Start() {
 
     socket_ = static_cast<uintptr_t>(sock);
     running_ = true;
+    stopKeepalive_ = false;
+    keepaliveThread_ = std::thread([this] { KeepaliveLoop(); });
     return true;
 }
 
 void DdpOutput::Stop() {
     if (!running_) return;
+    {
+        std::lock_guard<std::mutex> lock(sendMutex_);
+        stopKeepalive_ = true;
+    }
+    keepaliveCv_.notify_one();
+    if (keepaliveThread_.joinable()) keepaliveThread_.join();
     if (socket_ != static_cast<uintptr_t>(~0ULL)) {
         const SOCKET sock = static_cast<SOCKET>(socket_);
         ::closesocket(sock);
@@ -84,20 +92,23 @@ void DdpOutput::OnFrame(const FrameContext&, const BgraFrameView& frame) {
     int payloadPixelWidth = 0;
     if (!BuildRgbPayload(frame, rgbPayload, payloadPixelWidth)) return;
 
-    const int64_t nowMs = NowMs();
-    const bool keepaliveDue = lastSendTimeMs_ <= 0 || (nowMs - lastSendTimeMs_) >= kKeepaliveMs;
+    std::lock_guard<std::mutex> lock(sendMutex_);
 
-    // Full-frame comparison: skip if pixel data is identical to the last successful send
-    // and a keepalive is not due. When sending, always send the complete frame — partial
-    // row sends are incompatible with common DDP controllers (WLED, FPP) that clear their
-    // pixel buffer at the start of each new frame, turning unsent rows black.
+    const int64_t nowMs = NowMs();
+
+    // Full-frame comparison: skip if pixel data is identical to the last successful send.
+    // The keepalive thread handles retransmission when CEF stops delivering frames for
+    // static content, so we do not need a keepalive timer here.
+    // When sending, always send the complete frame — partial row sends are incompatible
+    // with common DDP controllers (WLED, FPP) that clear their pixel buffer at the start
+    // of each new frame, turning unsent rows black.
     const bool frameUnchanged =
         !previousRgbPayload_.empty() &&
         previousRgbPayload_.size() == rgbPayload.size() &&
         previousPayloadWidth_ == payloadPixelWidth &&
         std::memcmp(rgbPayload.data(), previousRgbPayload_.data(), rgbPayload.size()) == 0;
 
-    if (frameUnchanged && !keepaliveDue) return;
+    if (frameUnchanged) return;
 
     uint64_t packetsOut = 0;
     uint64_t bytesOut = 0;
@@ -105,7 +116,6 @@ void DdpOutput::OnFrame(const FrameContext&, const BgraFrameView& frame) {
 
     if (ok) {
         framesSent_.fetch_add(1, std::memory_order_relaxed);
-        if (frameUnchanged) keepaliveFramesSent_.fetch_add(1, std::memory_order_relaxed);
         packetsSent_.fetch_add(packetsOut, std::memory_order_relaxed);
         bytesSent_.fetch_add(bytesOut, std::memory_order_relaxed);
         lastSendTimeMs_.store(nowMs, std::memory_order_relaxed);
@@ -242,6 +252,35 @@ bool DdpOutput::SendDdpPackets(const uint8_t* data, size_t dataSize, uint64_t& p
     }
 
     return allSent;
+}
+
+void DdpOutput::KeepaliveLoop() {
+    std::unique_lock<std::mutex> lock(sendMutex_);
+    while (!stopKeepalive_) {
+        // Sleep up to 100 ms, or until Stop() wakes us via the cv.
+        keepaliveCv_.wait_for(lock, std::chrono::milliseconds(100));
+        if (stopKeepalive_) break;
+        if (previousRgbPayload_.empty()) continue;
+
+        const int64_t nowMs = NowMs();
+        const int64_t last = lastSendTimeMs_.load(std::memory_order_relaxed);
+        if (last > 0 && (nowMs - last) < kKeepaliveMs) continue;
+
+        // Keepalive is due and CEF is no longer delivering new frames.
+        // Resend the last known frame to keep the controller displaying its picture.
+        uint64_t packetsOut = 0;
+        uint64_t bytesOut = 0;
+        const bool ok = SendDdpPackets(previousRgbPayload_.data(), previousRgbPayload_.size(),
+                                       packetsOut, bytesOut);
+        if (ok) {
+            keepaliveFramesSent_.fetch_add(1, std::memory_order_relaxed);
+            packetsSent_.fetch_add(packetsOut, std::memory_order_relaxed);
+            bytesSent_.fetch_add(bytesOut, std::memory_order_relaxed);
+            lastSendTimeMs_.store(NowMs(), std::memory_order_relaxed);
+        } else {
+            sendErrors_.fetch_add(1, std::memory_order_relaxed);
+        }
+    }
 }
 
 uint8_t DdpOutput::NextSequence() {
