@@ -78,6 +78,18 @@ Transport protocols (Spout sender, DDP) that share a single D3D staging readback
 - `SpoutOutput` — GPU-path: `SpoutDX::SendTexture`, no CPU round-trip
 - Exports are in `frame_transport_exports.cpp`: `startSpoutSender`, `stopSpoutSender`, `startDdpOutput`, `stopDdpOutput`, `getDdpOutputStats`
 
+### DDP staging readback
+
+Staging is cropped to the union bounding box of all active DDP source rects (`RecomputeDdpCrop`) rather than the full canvas — `CopySubresourceRegion` + `Map` on a small region is much cheaper than `CopyResource` on the full canvas.
+
+`DdpOutput::rgbPayload_` is a pre-allocated member so `BuildRgbPayload` reuses the same buffer every frame (no heap allocation in the hot path). `std::swap` with `previousRgbPayload_` avoids a copy on send.
+
+**What didn't work (v1.0.8 attempt):**
+
+- `std::async(std::launch::async)` per output per frame — creates OS threads at 60 fps. The `f.wait()` forced the render thread to pay thread-create cost every frame with no real parallelism benefit for 1–4 outputs. Reverted to sequential `OnFrame`.
+- `D3D11_MAP_FLAG_DO_NOT_WAIT` on a double-buffered staging texture — intended to skip rather than stall, but the flag is hardware/driver dependent. On a different GPU/driver it returned `DXGI_ERROR_WAS_STILL_DRAWING` on nearly every frame, leaving the keepalive (100 ms / 10 fps) as the only source of output. Reverted to blocking `Map`; with a small crop region the stall is trivial.
+- Double-buffered staging (`stagingTex_[2]`) — added 1-frame latency and extra complexity. With the crop optimization the copy is small enough that a blocking single-buffer Map is cheaper overall. Reverted to single-buffer.
+
 ### Spout input shared memory layout
 
 ```

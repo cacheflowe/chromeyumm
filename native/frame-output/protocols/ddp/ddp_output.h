@@ -78,6 +78,7 @@ private:
     std::condition_variable keepaliveCv_;
     bool stopKeepalive_ = false;
     std::thread keepaliveThread_;
+    std::vector<uint8_t> rgbPayload_;
     std::vector<uint8_t> previousRgbPayload_;
     int previousPayloadWidth_ = 0;
     // Pre-allocated send buffer — avoids per-packet heap allocation in the hot path.

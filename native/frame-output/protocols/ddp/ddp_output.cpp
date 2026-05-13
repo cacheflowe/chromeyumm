@@ -76,6 +76,7 @@ void DdpOutput::Stop() {
     }
     socket_ = static_cast<uintptr_t>(~0ULL);
     running_ = false;
+    rgbPayload_.clear();
     previousRgbPayload_.clear();
     previousPayloadWidth_ = 0;
 }
@@ -88,9 +89,8 @@ void DdpOutput::OnFrame(const FrameContext&, const BgraFrameView& frame) {
     if (!running_) return;
     framesReceived_.fetch_add(1, std::memory_order_relaxed);
 
-    std::vector<uint8_t> rgbPayload;
     int payloadPixelWidth = 0;
-    if (!BuildRgbPayload(frame, rgbPayload, payloadPixelWidth)) return;
+    if (!BuildRgbPayload(frame, rgbPayload_, payloadPixelWidth)) return;
 
     std::lock_guard<std::mutex> lock(sendMutex_);
 
@@ -104,22 +104,22 @@ void DdpOutput::OnFrame(const FrameContext&, const BgraFrameView& frame) {
     // of each new frame, turning unsent rows black.
     const bool frameUnchanged =
         !previousRgbPayload_.empty() &&
-        previousRgbPayload_.size() == rgbPayload.size() &&
+        previousRgbPayload_.size() == rgbPayload_.size() &&
         previousPayloadWidth_ == payloadPixelWidth &&
-        std::memcmp(rgbPayload.data(), previousRgbPayload_.data(), rgbPayload.size()) == 0;
+        std::memcmp(rgbPayload_.data(), previousRgbPayload_.data(), rgbPayload_.size()) == 0;
 
     if (frameUnchanged) return;
 
     uint64_t packetsOut = 0;
     uint64_t bytesOut = 0;
-    const bool ok = SendDdpPackets(rgbPayload.data(), rgbPayload.size(), packetsOut, bytesOut);
+    const bool ok = SendDdpPackets(rgbPayload_.data(), rgbPayload_.size(), packetsOut, bytesOut);
 
     if (ok) {
         framesSent_.fetch_add(1, std::memory_order_relaxed);
         packetsSent_.fetch_add(packetsOut, std::memory_order_relaxed);
         bytesSent_.fetch_add(bytesOut, std::memory_order_relaxed);
         lastSendTimeMs_.store(nowMs, std::memory_order_relaxed);
-        previousRgbPayload_ = std::move(rgbPayload);
+        std::swap(rgbPayload_, previousRgbPayload_);
         previousPayloadWidth_ = payloadPixelWidth;
     } else {
         sendErrors_.fetch_add(1, std::memory_order_relaxed);
