@@ -2,6 +2,8 @@
 
 #include <d3d11.h>
 
+#include <climits>
+#include <future>
 #include <map>
 #include <memory>
 #include <sstream>
@@ -92,6 +94,8 @@ public:
         auto* ddpPtr = output.get();
         manager_->RegisterOutput(std::move(output));
         ddpOutputs_.push_back(ddpPtr);
+        ddpSourceRects_.push_back(ddp.sourceRect);
+        RecomputeDdpCrop();
 
         ::log("DDP: started for webviewId " + std::to_string(webviewId) +
               " -> " + ddp.controllerAddress + ":" + std::to_string(ddp.port));
@@ -134,31 +138,24 @@ public:
             manager_.reset();
         }
         ddpOutputs_.clear();
-        if (stagingTex_) {
-            stagingTex_->Release();
-            stagingTex_ = nullptr;
-        }
-        stagingW_ = 0;
-        stagingH_ = 0;
+        ddpSourceRects_.clear();
+        ddpCropX_ = 0; ddpCropY_ = 0; ddpCropW_ = 0; ddpCropH_ = 0;
+        ReleaseStagingTextures();
         frameCounter_ = 0;
     }
 
     void StopOutputsByName(const char* name) {
         if (!manager_) return;
-        // Clear DDP pointer cache if stopping DDP outputs.
         if (std::strcmp(name, "ddp") == 0) {
             ddpOutputs_.clear();
+            ddpSourceRects_.clear();
+            ddpCropX_ = 0; ddpCropY_ = 0; ddpCropW_ = 0; ddpCropH_ = 0;
         }
         manager_->StopOutputsByName(name);
         // If no outputs remain, clean up staging resources.
         if (!manager_->HasOutputs()) {
             manager_.reset();
-            if (stagingTex_) {
-                stagingTex_->Release();
-                stagingTex_ = nullptr;
-            }
-            stagingW_ = 0;
-            stagingH_ = 0;
+            ReleaseStagingTextures();
         }
     }
 
@@ -215,48 +212,87 @@ public:
             manager_->OnGpuFrame(frameCtx, gpu);
         }
 
-        // CPU frame path — DDP and similar pixel-based outputs.
-        // Only create staging texture and do readback if needed.
-        if (manager_->HasCpuOutputs()) {
-            const bool needsStaging =
-                !stagingTex_ ||
-                stagingW_ != static_cast<int>(srcDesc.Width) ||
-                stagingH_ != static_cast<int>(srcDesc.Height);
+        if (!manager_->HasCpuOutputs()) return;
+        if (ddpCropW_ <= 0 || ddpCropH_ <= 0) return;
 
-            if (needsStaging) {
-                if (stagingTex_) {
-                    stagingTex_->Release();
-                    stagingTex_ = nullptr;
-                }
+        // Clamp crop to actual canvas bounds (guards against misconfigured source rects).
+        const int cropX = std::max(0, ddpCropX_);
+        const int cropY = std::max(0, ddpCropY_);
+        const int cropW = std::min(ddpCropW_, static_cast<int>(srcDesc.Width)  - cropX);
+        const int cropH = std::min(ddpCropH_, static_cast<int>(srcDesc.Height) - cropY);
+        if (cropW <= 0 || cropH <= 0) return;
 
-                D3D11_TEXTURE2D_DESC stagingDesc = srcDesc;
-                stagingDesc.BindFlags = 0;
-                stagingDesc.MiscFlags = 0;
-                stagingDesc.Usage = D3D11_USAGE_STAGING;
-                stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        // Fix #1: Double-buffered staging — write current frame to stagingTex_[writeIdx],
+        // read the previous frame from stagingTex_[readIdx] without a GPU stall.
+        const int writeIdx = stagingWriteIdx_;
+        const int readIdx  = 1 - writeIdx;
+        stagingWriteIdx_   = readIdx; // toggle for next frame
 
-                if (SUCCEEDED(device->CreateTexture2D(&stagingDesc, nullptr, &stagingTex_)) && stagingTex_) {
-                    stagingW_ = static_cast<int>(srcDesc.Width);
-                    stagingH_ = static_cast<int>(srcDesc.Height);
-                }
-            }
+        // Ensure the write-side staging texture exists and matches the crop dimensions.
+        if (!stagingTex_[writeIdx] || stagingW_[writeIdx] != cropW || stagingH_[writeIdx] != cropH) {
+            if (stagingTex_[writeIdx]) { stagingTex_[writeIdx]->Release(); stagingTex_[writeIdx] = nullptr; }
 
-            if (stagingTex_) {
-                context->CopyResource(stagingTex_, sharedTex);
+            D3D11_TEXTURE2D_DESC stagingDesc = srcDesc;
+            stagingDesc.Width          = static_cast<UINT>(cropW);
+            stagingDesc.Height         = static_cast<UINT>(cropH);
+            stagingDesc.BindFlags      = 0;
+            stagingDesc.MiscFlags      = 0;
+            stagingDesc.Usage          = D3D11_USAGE_STAGING;
+            stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
 
-                D3D11_MAPPED_SUBRESOURCE mapped = {};
-                if (SUCCEEDED(context->Map(stagingTex_, 0, D3D11_MAP_READ, 0, &mapped))) {
-                    BgraFrameView bgra{};
-                    bgra.data = reinterpret_cast<const uint8_t*>(mapped.pData);
-                    bgra.width = static_cast<int>(srcDesc.Width);
-                    bgra.height = static_cast<int>(srcDesc.Height);
-                    bgra.strideBytes = static_cast<int>(mapped.RowPitch);
-
-                    manager_->OnFrame(frameCtx, bgra);
-                    context->Unmap(stagingTex_, 0);
-                }
+            if (SUCCEEDED(device->CreateTexture2D(&stagingDesc, nullptr, &stagingTex_[writeIdx]))) {
+                stagingW_[writeIdx] = cropW;
+                stagingH_[writeIdx] = cropH;
             }
         }
+
+        // Fix #3: Copy only the DDP bounding box instead of the full canvas.
+        if (stagingTex_[writeIdx]) {
+            D3D11_BOX srcBox{};
+            srcBox.left   = static_cast<UINT>(cropX);
+            srcBox.top    = static_cast<UINT>(cropY);
+            srcBox.front  = 0;
+            srcBox.right  = static_cast<UINT>(cropX + cropW);
+            srcBox.bottom = static_cast<UINT>(cropY + cropH);
+            srcBox.back   = 1;
+            context->CopySubresourceRegion(stagingTex_[writeIdx], 0, 0, 0, 0, sharedTex, 0, &srcBox);
+        }
+
+        // The read-side texture holds the previous frame. Skip on the very first frame
+        // (it hasn't been written yet). Use DO_NOT_WAIT so we never stall the render thread
+        // waiting for the GPU — if the previous copy somehow isn't done, drop this DDP frame.
+        if (!stagingTex_[readIdx] || stagingW_[readIdx] != cropW || stagingH_[readIdx] != cropH) return;
+
+        D3D11_MAPPED_SUBRESOURCE mapped = {};
+        const HRESULT hr = context->Map(stagingTex_[readIdx], 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+        if (FAILED(hr)) return; // GPU not done with previous frame — skip rather than stall
+
+        {
+            BgraFrameView bgra{};
+            bgra.data        = reinterpret_cast<const uint8_t*>(mapped.pData);
+            bgra.width       = cropW;
+            bgra.height      = cropH;
+            bgra.strideBytes = static_cast<int>(mapped.RowPitch);
+            bgra.cropOriginX = cropX;
+            bgra.cropOriginY = cropY;
+
+            // Fix #2: Dispatch all CPU outputs in parallel. Each DdpOutput is independent
+            // (own socket, own mutex). We wait for all before Unmap so the mapped pointer
+            // remains valid for the full duration of the reads.
+            const auto& outputs = manager_->Outputs();
+            std::vector<std::future<void>> futures;
+            futures.reserve(outputs.size());
+            for (const auto& output : outputs) {
+                if (!output->IsRunning() || !output->NeedsCpuFrame()) continue;
+                IOutputProtocol* outPtr = output.get();
+                futures.push_back(std::async(std::launch::async, [outPtr, &frameCtx, &bgra]() {
+                    outPtr->OnFrame(frameCtx, bgra);
+                }));
+            }
+            for (auto& f : futures) f.wait();
+        }
+
+        context->Unmap(stagingTex_[readIdx], 0);
     }
 
 private:
@@ -266,12 +302,50 @@ private:
         }
     }
 
+    void ReleaseStagingTextures() {
+        for (int i = 0; i < 2; ++i) {
+            if (stagingTex_[i]) { stagingTex_[i]->Release(); stagingTex_[i] = nullptr; }
+            stagingW_[i] = 0;
+            stagingH_[i] = 0;
+        }
+        stagingWriteIdx_ = 0;
+    }
+
+    // Recompute the union bounding box of all registered DDP source rects.
+    // Called whenever outputs are added or removed so the staging crop stays tight.
+    void RecomputeDdpCrop() {
+        if (ddpSourceRects_.empty()) {
+            ddpCropX_ = 0; ddpCropY_ = 0; ddpCropW_ = 0; ddpCropH_ = 0;
+            ReleaseStagingTextures();
+            return;
+        }
+        int minX = INT_MAX, minY = INT_MAX, maxX = 0, maxY = 0;
+        for (const auto& r : ddpSourceRects_) {
+            minX = std::min(minX, r.x);
+            minY = std::min(minY, r.y);
+            maxX = std::max(maxX, r.x + r.width);
+            maxY = std::max(maxY, r.y + r.height);
+        }
+        ddpCropX_ = minX;
+        ddpCropY_ = minY;
+        ddpCropW_ = maxX - minX;
+        ddpCropH_ = maxY - minY;
+        // Invalidate staging textures — size may have changed.
+        ReleaseStagingTextures();
+    }
+
 private:
     std::unique_ptr<FrameOutputManager> manager_;
-    std::vector<DdpOutput*> ddpOutputs_;
-    ID3D11Texture2D* stagingTex_ = nullptr;
-    int stagingW_ = 0;
-    int stagingH_ = 0;
+    std::vector<DdpOutput*>  ddpOutputs_;
+    std::vector<SourceRect>  ddpSourceRects_;
+    int ddpCropX_ = 0;
+    int ddpCropY_ = 0;
+    int ddpCropW_ = 0;
+    int ddpCropH_ = 0;
+    ID3D11Texture2D* stagingTex_[2] = {nullptr, nullptr};
+    int stagingW_[2] = {0, 0};
+    int stagingH_[2] = {0, 0};
+    int stagingWriteIdx_ = 0;
     uint64_t frameCounter_ = 0;
 };
 

@@ -143,8 +143,8 @@ bool DdpOutput::BuildRgbPayload(const BgraFrameView& frame, std::vector<uint8_t>
         return false;
     }
 
-    int srcX = std::max(0, config_.sourceRect.x);
-    int srcY = std::max(0, config_.sourceRect.y);
+    int srcX = std::max(0, config_.sourceRect.x - frame.cropOriginX);
+    int srcY = std::max(0, config_.sourceRect.y - frame.cropOriginY);
     int srcW = config_.sourceRect.width > 0 ? config_.sourceRect.width : frame.width;
     int srcH = config_.sourceRect.height > 0 ? config_.sourceRect.height : frame.height;
 

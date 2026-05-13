@@ -38,6 +38,7 @@
 #include <direct.h>    // For _getcwd
 #include <tlhelp32.h>  // For process enumeration
 #include <dwmapi.h>    // For DWM thumbnail (NativeDisplayWindow)
+#include <timeapi.h>   // For timeBeginPeriod / timeEndPeriod
 
 // Shared cross-platform utilities
 #include "shared/glob_match.h"
@@ -5602,6 +5603,11 @@ BOOL WINAPI ConsoleControlHandler(DWORD dwCtrlType) {
 extern "C" {
 
 CHROMEYUMM_EXPORT void startEventLoop(const char* identifier, const char* name, const char* channel) {
+    // Raise Windows timer resolution from the default ~15 ms to 1 ms for the lifetime
+    // of the process. This tightens thread scheduler quantum and reduces jitter in all
+    // timed waits (DDP keepalive, sleep, condition_variable::wait_for, etc.).
+    timeBeginPeriod(1);
+
     g_mainThreadId = GetCurrentThreadId();
 
     // Store identifier, name, and channel globally for use in CEF initialization
@@ -5695,6 +5701,7 @@ CHROMEYUMM_EXPORT void startEventLoop(const char* identifier, const char* name, 
                 g_job_object = nullptr;
             }
 
+            timeEndPeriod(1);
             CefShutdown();
             g_shutdownComplete.store(true);
         } else {
