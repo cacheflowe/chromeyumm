@@ -7,6 +7,7 @@
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
+#include <d3dcompiler.h>
 
 #include <atomic>
 #include <chrono>
@@ -17,6 +18,13 @@
 #include <thread>
 #include <vector>
 
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
 #include "vendor/nlohmann/json.hpp"
 #include "frame-output/protocols/ddp/ddp_output.h"
 
@@ -24,6 +32,7 @@
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "ws2_32.lib")
 #pragma comment(lib, "winmm.lib")
+#pragma comment(lib, "d3dcompiler.lib")
 
 // ---------------------------------------------------------------------------
 // UDP probe
@@ -122,39 +131,29 @@ BOOL WINAPI CtrlHandler(DWORD) {
 }
 
 // ---------------------------------------------------------------------------
-// Bilinear downsample
+// Shader compiler helper
 // ---------------------------------------------------------------------------
-static void ScaleBgra(
-    const uint8_t* src, int srcW, int srcH, int srcStride,
-    uint8_t* dst, int dstW, int dstH)
-{
-    for (int dy = 0; dy < dstH; ++dy) {
-        const float sy = (dy + 0.5f) * (float)srcH / dstH - 0.5f;
-        const int sy0 = std::max(0, (int)sy);
-        const int sy1 = std::min(srcH - 1, sy0 + 1);
-        const float fy = sy - (float)sy0;
-        for (int dx = 0; dx < dstW; ++dx) {
-            const float sx = (dx + 0.5f) * (float)srcW / dstW - 0.5f;
-            const int sx0 = std::max(0, (int)sx);
-            const int sx1 = std::min(srcW - 1, sx0 + 1);
-            const float fx = sx - (float)sx0;
-            for (int ch = 0; ch < 4; ++ch) {
-                const float v00 = src[sy0 * srcStride + sx0 * 4 + ch];
-                const float v10 = src[sy0 * srcStride + sx1 * 4 + ch];
-                const float v01 = src[sy1 * srcStride + sx0 * 4 + ch];
-                const float v11 = src[sy1 * srcStride + sx1 * 4 + ch];
-                dst[(dy * dstW + dx) * 4 + ch] =
-                    (uint8_t)((v00*(1-fx) + v10*fx) * (1-fy) +
-                              (v01*(1-fx) + v11*fx) * fy + 0.5f);
-            }
+static ComPtr<ID3DBlob> CompileShader(const std::string& source, const char* entrypoint, const char* target) {
+    ComPtr<ID3DBlob> code;
+    ComPtr<ID3DBlob> errors;
+    HRESULT hr = D3DCompile(
+        source.c_str(), source.size(), nullptr, nullptr, nullptr,
+        entrypoint, target, 0, 0, &code, &errors);
+    if (FAILED(hr)) {
+        if (errors) {
+            fprintf(stderr, "Shader compilation error: %s\n", (const char*)errors->GetBufferPointer());
+        } else {
+            fprintf(stderr, "Shader compilation error HRESULT: 0x%08X\n", hr);
         }
+        return nullptr;
     }
+    return code;
 }
 
 // ---------------------------------------------------------------------------
 // Capture region overlay window
 // ---------------------------------------------------------------------------
-static constexpr int      BORDER_PX    = 3;
+static constexpr int      BORDER_PX    = 6;
 static constexpr COLORREF BORDER_COLOR = RGB(255, 0, 220);  // magenta
 static constexpr COLORREF CHROMA_KEY   = RGB(1, 1, 1);      // near-black -> transparent
 
@@ -463,6 +462,7 @@ found_output:
     const int monOffX = outDesc.DesktopCoordinates.left;
     const int monOffY = outDesc.DesktopCoordinates.top;
 
+    int desktopW = 0, desktopH = 0;
     auto initDup = [&](ComPtr<IDXGIOutputDuplication>& dup) -> bool {
         HRESULT r = dxgiOut1->DuplicateOutput(device.Get(), &dup);
         if (FAILED(r)) {
@@ -475,6 +475,8 @@ found_output:
             fprintf(stderr, "screen-ddp: unsupported desktop format 0x%X\n", desc.ModeDesc.Format);
             return false;
         }
+        desktopW = (int)desc.ModeDesc.Width;
+        desktopH = (int)desc.ModeDesc.Height;
         return true;
     };
 
@@ -482,8 +484,8 @@ found_output:
     if (!initDup(dup)) return 1;
 
     D3D11_TEXTURE2D_DESC stgDesc{};
-    stgDesc.Width            = (UINT)capW;
-    stgDesc.Height           = (UINT)capH;
+    stgDesc.Width            = (UINT)cvW;
+    stgDesc.Height           = (UINT)cvH;
     stgDesc.MipLevels        = stgDesc.ArraySize = 1;
     stgDesc.Format           = DXGI_FORMAT_B8G8R8A8_UNORM;
     stgDesc.SampleDesc.Count = 1;
@@ -496,6 +498,105 @@ found_output:
         return 1;
     }
 
+    D3D11_TEXTURE2D_DESC tempDesc{};
+    tempDesc.Width            = (UINT)capW;
+    tempDesc.Height           = (UINT)capH;
+    tempDesc.MipLevels        = tempDesc.ArraySize = 1;
+    tempDesc.Format           = DXGI_FORMAT_B8G8R8A8_UNORM;
+    tempDesc.SampleDesc.Count = 1;
+    tempDesc.Usage            = D3D11_USAGE_DEFAULT;
+    tempDesc.BindFlags        = D3D11_BIND_SHADER_RESOURCE;
+    ComPtr<ID3D11Texture2D> tempTex;
+    hr = device->CreateTexture2D(&tempDesc, nullptr, &tempTex);
+    if (FAILED(hr)) {
+        fprintf(stderr, "screen-ddp: failed to create intermediate texture: 0x%08X\n", hr);
+        return 1;
+    }
+
+    ComPtr<ID3D11ShaderResourceView> tempSRV;
+    hr = device->CreateShaderResourceView(tempTex.Get(), nullptr, &tempSRV);
+    if (FAILED(hr)) {
+        fprintf(stderr, "screen-ddp: failed to create temp SRV: 0x%08X\n", hr);
+        return 1;
+    }
+
+    D3D11_TEXTURE2D_DESC rtDesc{};
+    rtDesc.Width            = (UINT)cvW;
+    rtDesc.Height           = (UINT)cvH;
+    rtDesc.MipLevels        = rtDesc.ArraySize = 1;
+    rtDesc.Format           = DXGI_FORMAT_B8G8R8A8_UNORM;
+    rtDesc.SampleDesc.Count = 1;
+    rtDesc.Usage            = D3D11_USAGE_DEFAULT;
+    rtDesc.BindFlags        = D3D11_BIND_RENDER_TARGET;
+    ComPtr<ID3D11Texture2D> rtTex;
+    hr = device->CreateTexture2D(&rtDesc, nullptr, &rtTex);
+    if (FAILED(hr)) {
+        fprintf(stderr, "screen-ddp: failed to create render target texture: 0x%08X\n", hr);
+        return 1;
+    }
+
+    ComPtr<ID3D11RenderTargetView> rtRTV;
+    hr = device->CreateRenderTargetView(rtTex.Get(), nullptr, &rtRTV);
+    if (FAILED(hr)) {
+        fprintf(stderr, "screen-ddp: failed to create RTV: 0x%08X\n", hr);
+        return 1;
+    }
+
+    const std::string shaderCode = R"(
+        struct VS_OUTPUT {
+            float4 position : SV_POSITION;
+            float2 texcoord : TEXCOORD;
+        };
+        VS_OUTPUT VSMain(uint id : SV_VertexID) {
+            VS_OUTPUT output;
+            output.texcoord = float2((id << 1) & 2, id & 2);
+            output.position = float4(output.texcoord * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
+            return output;
+        }
+
+        Texture2D shaderTexture : register(t0);
+        SamplerState sampleType : register(s0);
+
+        float4 PSMain(VS_OUTPUT input) : SV_TARGET {
+            return shaderTexture.Sample(sampleType, input.texcoord);
+        }
+    )";
+
+    ComPtr<ID3DBlob> vsBlob = CompileShader(shaderCode, "VSMain", "vs_4_0");
+    ComPtr<ID3DBlob> psBlob = CompileShader(shaderCode, "PSMain", "ps_4_0");
+    if (!vsBlob || !psBlob) {
+        return 1;
+    }
+
+    ComPtr<ID3D11VertexShader> vertexShader;
+    hr = device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &vertexShader);
+    if (FAILED(hr)) {
+        fprintf(stderr, "screen-ddp: creating VertexShader failed: 0x%08X\n", hr);
+        return 1;
+    }
+
+    ComPtr<ID3D11PixelShader> pixelShader;
+    hr = device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &pixelShader);
+    if (FAILED(hr)) {
+        fprintf(stderr, "screen-ddp: creating PixelShader failed: 0x%08X\n", hr);
+        return 1;
+    }
+
+    D3D11_SAMPLER_DESC sampDesc{};
+    sampDesc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    sampDesc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampDesc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+    sampDesc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+    sampDesc.MinLOD = 0;
+    sampDesc.MaxLOD = D3D11_FLOAT32_MAX;
+    ComPtr<ID3D11SamplerState> samplerState;
+    hr = device->CreateSamplerState(&sampDesc, &samplerState);
+    if (FAILED(hr)) {
+        fprintf(stderr, "screen-ddp: failed to create sampler state: 0x%08X\n", hr);
+        return 1;
+    }
+
     std::vector<uint8_t> canvas((size_t)cvW * cvH * 4);
     FrameContext frameCtx{};
     frameCtx.canvasWidth  = cvW;
@@ -503,22 +604,17 @@ found_output:
 
     SetConsoleCtrlHandler(CtrlHandler, TRUE);
 
-    int desktopW = 0, desktopH = 0;
-    {
-        DXGI_OUTDUPL_DESC dupDesc{};
-        dup->GetDesc(&dupDesc);
-        desktopW = (int)dupDesc.ModeDesc.Width;
-        desktopH = (int)dupDesc.ModeDesc.Height;
-        printf("screen-ddp: monitor %d  desktop %dx%d  capture [%d,%d %dx%d] -> canvas %dx%d  %zu output(s)  %d fps\n",
-            mon, desktopW, desktopH,
-            capX, capY, capW, capH,
-            cvW, cvH, outputs.size(), fps);
-        if ((capX + capW) > desktopW || (capY + capH) > desktopH) {
-            fprintf(stderr, "screen-ddp: captureRect extends beyond monitor bounds (%dx%d)\n",
-                    desktopW, desktopH);
-            return 1;
-        }
+    // Initial check for bounds
+    if ((capX + capW) > desktopW || (capY + capH) > desktopH) {
+        fprintf(stderr, "screen-ddp: captureRect extends beyond monitor bounds (%dx%d)\n",
+                desktopW, desktopH);
+        return 1;
     }
+
+    printf("screen-ddp: monitor %d  desktop %dx%d  capture [%d,%d %dx%d] -> canvas %dx%d  %zu output(s)  %d fps\n",
+        mon, desktopW, desktopH,
+        capX, capY, capW, capH,
+        cvW, cvH, outputs.size(), fps);
 
     g_capX.store(capX, std::memory_order_relaxed);
     g_capY.store(capY, std::memory_order_relaxed);
@@ -587,8 +683,36 @@ found_output:
         box.right  = (UINT)(cx + capW);
         box.bottom = (UINT)(cy + capH);
         box.back   = 1;
-        ctx->CopySubresourceRegion(staging.Get(), 0, 0, 0, 0, deskTex.Get(), 0, &box);
+        ctx->CopySubresourceRegion(tempTex.Get(), 0, 0, 0, 0, deskTex.Get(), 0, &box);
         dup->ReleaseFrame();
+
+        // Downscale subregion to canvas size on the GPU
+        ctx->OMSetRenderTargets(1, rtRTV.GetAddressOf(), nullptr);
+
+        D3D11_VIEWPORT vp{};
+        vp.Width = (float)cvW;
+        vp.Height = (float)cvH;
+        vp.MinDepth = 0.0f;
+        vp.MaxDepth = 1.0f;
+        vp.TopLeftX = 0;
+        vp.TopLeftY = 0;
+        ctx->RSSetViewports(1, &vp);
+
+        ID3D11ShaderResourceView* srvs[] = { tempSRV.Get() };
+        ctx->PSSetShaderResources(0, 1, srvs);
+        ctx->PSSetSamplers(0, 1, samplerState.GetAddressOf());
+        ctx->VSSetShader(vertexShader.Get(), nullptr, 0);
+        ctx->PSSetShader(pixelShader.Get(), nullptr, 0);
+        ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+        ctx->Draw(3, 0);
+
+        // Reset bindings
+        ID3D11ShaderResourceView* nullSRVs[] = { nullptr };
+        ctx->PSSetShaderResources(0, 1, nullSRVs);
+
+        // Copy render target results to the cpu-readable staging texture
+        ctx->CopyResource(staging.Get(), rtTex.Get());
 
         D3D11_MAPPED_SUBRESOURCE mapped{};
         hr = ctx->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
@@ -597,16 +721,11 @@ found_output:
             continue;
         }
 
-        if (capW == cvW && capH == cvH) {
-            // No scaling - direct row copy, accounting for GPU row padding.
-            const auto* src = static_cast<const uint8_t*>(mapped.pData);
-            for (int y = 0; y < cvH; ++y)
-                memcpy(canvas.data() + (size_t)y * cvW * 4,
-                       src + (size_t)y * mapped.RowPitch, (size_t)cvW * 4);
-        } else {
-            ScaleBgra(static_cast<const uint8_t*>(mapped.pData),
-                      capW, capH, (int)mapped.RowPitch,
-                      canvas.data(), cvW, cvH);
+        // Direct row copy of downscaled frame from the staging texture, accounting for row padding
+        const auto* src = static_cast<const uint8_t*>(mapped.pData);
+        for (int y = 0; y < cvH; ++y) {
+            memcpy(canvas.data() + (size_t)y * cvW * 4,
+                   src + (size_t)y * mapped.RowPitch, (size_t)cvW * 4);
         }
         ctx->Unmap(staging.Get(), 0);
 
