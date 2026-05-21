@@ -119,7 +119,7 @@ Same options as chromeyumm's `ddpOutputs` block in `display-config.json`:
 
 ## Capture Region Overlay (`--show-region`)
 
-When `--show-region` is passed, a frameless topmost window appears over the capture region with a 3-pixel magenta border. The interior is click-through (transparent to input).
+When `--show-region` is passed, a frameless topmost window appears over the capture region with a 6-pixel magenta border. The interior is click-through (transparent to input).
 
 - **Drag** by grabbing the magenta border — cursor changes to the four-arrow move icon
 - On drag end, the new position is clamped to the monitor bounds, the capture position updates live, and `captureRect.x/y` is written back to the config file
@@ -137,7 +137,7 @@ DXGI monitors are enumerated across all GPU adapters. On hybrid-GPU laptops (Int
 - Timer resolution is set to 1ms via `timeBeginPeriod(1)` for precise frame-rate pacing; capture thread runs at `THREAD_PRIORITY_ABOVE_NORMAL`
 
 ### Scaling
-If `canvasWidth/Height` differs from `captureRect` dimensions, bilinear downscaling is applied in software. When dimensions match, a fast row-copy path skips the scale step (accounting for GPU row padding in `RowPitch`).
+If `canvasWidth/Height` differs from `captureRect` dimensions, bilinear downscaling is performed on the GPU via a D3D11 render pass with a linear-filtering sampler. The captured sub-region is first copied into a `capW×capH` intermediate texture, then rendered as a full-screen triangle into a `cvW×cvH` render target. The result is copied to a CPU-readable staging texture for DDP transmission. This keeps the PCIe readback size minimal (canvas size, not capture size) and eliminates CPU scaling overhead entirely. When dimensions match, the intermediate render pass is still used but performs a 1:1 copy through the same pipeline.
 
 ### DDP keepalive
 `DdpOutput` runs a background keepalive thread that retransmits the last frame if no new frame has been sent in 100ms. This prevents LED controllers from blanking when the captured content is static.
