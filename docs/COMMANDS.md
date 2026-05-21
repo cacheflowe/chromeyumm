@@ -86,6 +86,19 @@ bun run build    # outputs to src/views/r3f/dist/
 
 GitHub Actions: push a `v*` tag to trigger `.github/workflows/release.yml` automatically (same notes format).
 
+## screen-ddp (Standalone Screen Capture)
+
+| Command | Description |
+|---|---|
+| `bun run build:screen-ddp` | Compile `screen-ddp.exe` only (fast; uses sccache) |
+| `bun run screen-capture` | Run screen-ddp with `screen-capture-config.json` and the region overlay |
+| `dist/screen-ddp.exe <config.json>` | Run with a custom config |
+| `dist/screen-ddp.exe <config.json> --show-region` | Show draggable capture-region overlay |
+| `dist/screen-ddp.exe <config.json> --verbose` | Enable per-second stats and DDP packet logs |
+| `dist/screen-ddp.exe <config.json> --save-frame [path]` | Save first non-black frame as BMP |
+
+See [design-docs/screen-ddp.md](design-docs/screen-ddp.md) for full config reference.
+
 ## What Requires Which Build
 
 | Changed | Rebuild needed |

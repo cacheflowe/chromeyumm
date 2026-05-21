@@ -21,8 +21,9 @@ const ROOT = import.meta.dir;
 const NATIVE_DIR = join(ROOT, "native");
 const DIST_DIR = join(ROOT, "dist");
 
-const skipNative = process.argv.includes("--skip-native");
-const isDev = process.argv.includes("--dev");
+const skipNative    = process.argv.includes("--skip-native");
+const screenDdpOnly = process.argv.includes("--screen-ddp-only");
+const isDev         = process.argv.includes("--dev");
 
 // ---------------------------------------------------------------------------
 // MSVC helpers
@@ -233,6 +234,46 @@ async function buildNative() {
   console.log(`✓ Helper: ${helperExe}`);
 }
 
+async function buildScreenDdp() {
+  if (skipNative && !screenDdpOnly) return;
+  await findMsvc(); // idempotent — safe to call again after buildNative()
+  console.log("\n── screen-ddp.exe ──────────────────────────────────────");
+
+  const screenDdpObj    = join(NATIVE_DIR, "build", "screen-ddp-main.obj");
+  const screenDdpDdpObj = join(NATIVE_DIR, "build", "screen-ddp-ddp.obj");
+  const screenDdpResFile = join(NATIVE_DIR, "build", "screen-ddp.res");
+  const screenDdpExe    = join(NATIVE_DIR, "build", "screen-ddp.exe");
+  const commonFlags     = `/c /EHsc /std:c++20 /DNOMINMAX /MT`;
+
+  await Promise.all([
+    runMsvc(
+      `cl ${commonFlags}` +
+        ` /I"${NATIVE_DIR}"` +
+        ` /Fo"${screenDdpObj}" "${join(NATIVE_DIR, "screen-ddp", "screen_ddp_main.cpp")}"`,
+    ),
+    runMsvc(
+      `cl ${commonFlags}` +
+        ` /Fo"${screenDdpDdpObj}" "${join(NATIVE_DIR, "frame-output", "protocols", "ddp", "ddp_output.cpp")}"`,
+    ),
+    (async () => {
+      // Generate the RC file with an absolute forward-slash path so the resource
+      // compiler preprocessor doesn't misinterpret backslash escape sequences.
+      const icoPath = join(NATIVE_DIR, "app.ico").replace(/\\/g, "/");
+      writeFileSync(join(NATIVE_DIR, "build", "screen-ddp.rc"), `1 ICON "${icoPath}"\n`);
+      await runMsvc(`rc /nologo /fo"${screenDdpResFile}" "${join(NATIVE_DIR, "build", "screen-ddp.rc")}"`);
+    })(),
+  ]);
+
+  await runMsvc(
+    `link /SUBSYSTEM:CONSOLE /OUT:"${screenDdpExe}"` +
+      ` d3d11.lib dxgi.lib ws2_32.lib gdi32.lib kernel32.lib user32.lib` +
+      ` "${screenDdpObj}" "${screenDdpDdpObj}" "${screenDdpResFile}"`,
+  );
+
+  copyFileSync(screenDdpExe, join(DIST_DIR, "screen-ddp.exe"));
+  console.log(`✓ screen-ddp: ${screenDdpExe}`);
+}
+
 async function compileExe() {
   console.log("\n── Compile chromeyumm.exe ──────────────────────────────");
   mkdirSync(DIST_DIR, { recursive: true });
@@ -364,9 +405,14 @@ async function copyRuntime() {
 console.log(`\nChromeyumm build  [${isDev ? "dev" : "release"}]`);
 console.log("─".repeat(50));
 
-await buildNative();
-await bundleTs();
-await compileExe();
-await copyRuntime();
+if (screenDdpOnly) {
+  await buildScreenDdp();
+} else {
+  await buildNative();
+  await buildScreenDdp();
+  await bundleTs();
+  await compileExe();
+  await copyRuntime();
+}
 
 console.log("\n✓ Build complete →", DIST_DIR);

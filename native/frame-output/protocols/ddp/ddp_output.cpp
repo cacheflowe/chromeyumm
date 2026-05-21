@@ -215,6 +215,15 @@ bool DdpOutput::SendDdpPackets(const uint8_t* data, size_t dataSize, uint64_t& p
     const size_t maxPacketSize = static_cast<size_t>(kDdpHeaderLength + kMaxDataLength);
     if (packetBuf_.size() < maxPacketSize) packetBuf_.resize(maxPacketSize);
 
+    const bool doLog = config_.debugLog && !debugLogDone_.exchange(true);
+    if (doLog) {
+        char addrStr[INET_ADDRSTRLEN]{};
+        inet_ntop(AF_INET, &address.sin_addr, addrStr, sizeof(addrStr));
+        fprintf(stderr, "[ddp] first send → %s:%d  payload=%zu bytes  %d packet(s)  pixelStart=%d\n",
+            addrStr, ntohs(address.sin_port),
+            dataSize, packetCount, config_.pixelStart);
+    }
+
     for (int packetIndex = 0; packetIndex < packetCount; ++packetIndex) {
         const int packetOffset = packetIndex * kMaxDataLength;
         const int payloadLength = std::min(kMaxDataLength, static_cast<int>(dataSize) - packetOffset);
@@ -233,6 +242,13 @@ bool DdpOutput::SendDdpPackets(const uint8_t* data, size_t dataSize, uint64_t& p
         packetBuf_[9] = static_cast<uint8_t>(payloadLength & 0xff);
 
         std::memcpy(packetBuf_.data() + kDdpHeaderLength, data + packetOffset, static_cast<size_t>(payloadLength));
+
+        if (doLog && packetIndex == 0) {
+            fprintf(stderr, "[ddp] pkt[0] header: ");
+            for (int i = 0; i < kDdpHeaderLength; ++i) fprintf(stderr, "%02X ", packetBuf_[i]);
+            fprintf(stderr, " first 3 data bytes: %02X %02X %02X\n",
+                packetBuf_[kDdpHeaderLength], packetBuf_[kDdpHeaderLength+1], packetBuf_[kDdpHeaderLength+2]);
+        }
 
         const SOCKET sock = static_cast<SOCKET>(socket_);
         const int packetSize = kDdpHeaderLength + payloadLength;

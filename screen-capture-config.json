@@ -1,0 +1,33 @@
+{
+  "_screenCapture_comment": "screen-ddp.exe only — captures a rectangle of a monitor and scales it to the virtual canvas before DDP output.",
+  "ddpOutputs": [
+    {
+      "controllerAddress": "192.168.1.245",
+      "destinationId": 0,
+      "flipH": false,
+      "label": "FPP strip A",
+      "pixelStart": 0,
+      "port": 4048,
+      "rotate": 0,
+      "source": {
+        "height": 32,
+        "width": 384,
+        "x": 0,
+        "y": 0
+      },
+      "zigZagRows": false
+    }
+  ],
+  "screenCapture": {
+    "canvasHeight": 32,
+    "canvasWidth": 384,
+    "captureRect": {
+      "height": 32,
+      "width": 384,
+      "x": 2843,
+      "y": 1963
+    },
+    "monitor": 0,
+    "targetFps": 60
+  }
+}

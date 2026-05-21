@@ -23,6 +23,7 @@ struct DdpOutputConfig {
     bool flipH = false;       // mirror output horizontally
     bool flipV = false;       // mirror output vertically
     int rotate = 0;           // clockwise rotation in degrees: 0, 90, 180, 270
+    bool debugLog = false;    // print first-send packet details to stderr
 };
 
 struct DdpOutputStats {
@@ -83,6 +84,7 @@ private:
     int previousPayloadWidth_ = 0;
     // Pre-allocated send buffer — avoids per-packet heap allocation in the hot path.
     std::vector<uint8_t> packetBuf_;
+    std::atomic<bool> debugLogDone_{false};
 };
 
 } // namespace chromeyumm::frame_output
