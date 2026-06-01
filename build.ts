@@ -241,35 +241,24 @@ async function buildScreenDdp() {
 
   mkdirSync(join(NATIVE_DIR, "build"), { recursive: true });
 
-  const screenDdpObj    = join(NATIVE_DIR, "build", "screen-ddp-main.obj");
-  const screenDdpDdpObj = join(NATIVE_DIR, "build", "screen-ddp-ddp.obj");
   const screenDdpResFile = join(NATIVE_DIR, "build", "screen-ddp.res");
   const screenDdpExe    = join(NATIVE_DIR, "build", "screen-ddp.exe");
-  const commonFlags     = `/c /EHsc /std:c++20 /DNOMINMAX /MT`;
 
-  await Promise.all([
-    runMsvc(
-      `cl ${commonFlags}` +
-        ` /I"${NATIVE_DIR}"` +
-        ` /Fo"${screenDdpObj}" "${join(NATIVE_DIR, "screen-ddp", "screen_ddp_main.cpp")}"`,
-    ),
-    runMsvc(
-      `cl ${commonFlags}` +
-        ` /Fo"${screenDdpDdpObj}" "${join(NATIVE_DIR, "frame-output", "protocols", "ddp", "ddp_output.cpp")}"`,
-    ),
-    (async () => {
-      // Generate the RC file with an absolute forward-slash path so the resource
-      // compiler preprocessor doesn't misinterpret backslash escape sequences.
-      const icoPath = join(NATIVE_DIR, "app.ico").replace(/\\/g, "/");
-      writeFileSync(join(NATIVE_DIR, "build", "screen-ddp.rc"), `1 ICON "${icoPath}"\n`);
-      await runMsvc(`rc /nologo /fo"${screenDdpResFile}" "${join(NATIVE_DIR, "build", "screen-ddp.rc")}"`);
-    })(),
-  ]);
+  // Generate the RC file and compile the resource.
+  const icoPath = join(NATIVE_DIR, "app.ico").replace(/\\/g, "/");
+  writeFileSync(join(NATIVE_DIR, "build", "screen-ddp.rc"), `1 ICON "${icoPath}"\n`);
+  await runMsvc(`rc /nologo /fo"${screenDdpResFile}" "${join(NATIVE_DIR, "build", "screen-ddp.rc")}"`);
 
+  // Compile + link in one cl invocation so cl finds its own linker by path
+  // rather than relying on `link` being resolvable in the shell's PATH.
   await runMsvc(
-    `link /SUBSYSTEM:CONSOLE /OUT:"${screenDdpExe}"` +
-      ` d3d11.lib dxgi.lib ws2_32.lib winmm.lib d3dcompiler.lib gdi32.lib kernel32.lib user32.lib` +
-      ` "${screenDdpObj}" "${screenDdpDdpObj}" "${screenDdpResFile}"`,
+    `cl /EHsc /std:c++20 /DNOMINMAX /MT` +
+      ` /I"${NATIVE_DIR}"` +
+      ` /Fe"${screenDdpExe}"` +
+      ` "${join(NATIVE_DIR, "screen-ddp", "screen_ddp_main.cpp")}"` +
+      ` "${join(NATIVE_DIR, "frame-output", "protocols", "ddp", "ddp_output.cpp")}"` +
+      ` "${screenDdpResFile}"` +
+      ` /link /SUBSYSTEM:CONSOLE d3d11.lib dxgi.lib ws2_32.lib winmm.lib d3dcompiler.lib gdi32.lib kernel32.lib user32.lib`,
   );
 
   copyFileSync(screenDdpExe, join(DIST_DIR, "screen-ddp.exe"));
