@@ -266,7 +266,7 @@ async function buildScreenDdp() {
 
   await runMsvc(
     `link /SUBSYSTEM:CONSOLE /OUT:"${screenDdpExe}"` +
-      ` d3d11.lib dxgi.lib ws2_32.lib gdi32.lib kernel32.lib user32.lib` +
+      ` d3d11.lib dxgi.lib dxgiformat.lib ws2_32.lib winmm.lib d3dcompiler.lib gdi32.lib kernel32.lib user32.lib` +
       ` "${screenDdpObj}" "${screenDdpDdpObj}" "${screenDdpResFile}"`,
   );
 
