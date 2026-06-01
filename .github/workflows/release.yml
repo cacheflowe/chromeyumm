@@ -55,6 +55,10 @@ jobs:
       - name: Setup vendors
         run: bun scripts/setup-vendors.ts
 
+      - name: Disable Defender real-time monitoring
+        shell: pwsh
+        run: Set-MpPreference -DisableRealtimeMonitoring $true
+
       - name: Build
         run: bun build.ts
 

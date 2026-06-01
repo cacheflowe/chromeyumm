@@ -239,6 +239,8 @@ async function buildScreenDdp() {
   await findMsvc(); // idempotent — safe to call again after buildNative()
   console.log("\n── screen-ddp.exe ──────────────────────────────────────");
 
+  mkdirSync(join(NATIVE_DIR, "build"), { recursive: true });
+
   const screenDdpObj    = join(NATIVE_DIR, "build", "screen-ddp-main.obj");
   const screenDdpDdpObj = join(NATIVE_DIR, "build", "screen-ddp-ddp.obj");
   const screenDdpResFile = join(NATIVE_DIR, "build", "screen-ddp.res");
