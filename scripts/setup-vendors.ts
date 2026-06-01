@@ -3,8 +3,9 @@
  *
  * Usage:
  *   bun scripts/setup-vendors.ts                # download + build all vendors
- *   bun scripts/setup-vendors.ts --cef-only     # CEF only
- *   bun scripts/setup-vendors.ts --spout-only   # Spout only
+ *   bun scripts/setup-vendors.ts --cef-only        # CEF only
+ *   bun scripts/setup-vendors.ts --spout-only     # Spout only
+ *   bun scripts/setup-vendors.ts --nlohmann-only  # nlohmann/json only
  *   bun scripts/setup-vendors.ts --cef-version 131.3.6+g7e8cdab+chromium-131.0.6778.109
  *   bun scripts/setup-vendors.ts --spout-tag 2.007.014
  *   bun scripts/setup-vendors.ts --latest       # auto-detect + install newest stable CEF
@@ -16,7 +17,8 @@
  *   3. Builds libcef_dll_wrapper.lib via CMake
  *   4. Downloads Spout2 release from GitHub
  *   5. Extracts to native/vendor/spout/
- *   6. Creates the root shared/ junction
+ *   6. Downloads nlohmann/json single header to native/vendor/nlohmann/
+ *   7. Creates the root shared/ junction
  *
  * On subsequent runs, existing vendor dirs are removed and replaced.
  * Run after cloning the repo or when upgrading CEF/Spout versions.
@@ -39,11 +41,15 @@ const DEFAULT_CEF_VERSION = "147.0.9+g2812b73+chromium-147.0.7727.49";
 // Spout2: find releases at https://github.com/leadedge/Spout2/releases
 const DEFAULT_SPOUT_TAG = "2.007.014";
 
+// nlohmann/json: find releases at https://github.com/nlohmann/json/releases
+const DEFAULT_NLOHMANN_TAG = "v3.11.3";
+
 // ── CLI parsing ─────────────────────────────────────────────────────────────
 
 const args = process.argv.slice(2);
 const cefOnly = args.includes("--cef-only");
 const spoutOnly = args.includes("--spout-only");
+const nlohmannOnly = args.includes("--nlohmann-only");
 const useLatest = args.includes("--latest");
 const checkLatest = args.includes("--check-latest");
 
@@ -111,6 +117,7 @@ if (useLatest) {
 
 const cefVersion = resolvedCefVersion;
 const spoutTag = getArg("--spout-tag") ?? DEFAULT_SPOUT_TAG;
+const nlohmannTag = getArg("--nlohmann-tag") ?? DEFAULT_NLOHMANN_TAG;
 
 // When --latest is used, persist the fetched version back into this script so
 // the default stays current and the change shows up cleanly in git diff.
@@ -426,6 +433,22 @@ async function setupSpout() {
   removeDir(extractDir);
 }
 
+// ── nlohmann/json setup ─────────────────────────────────────────────────────
+
+async function setupNlohmann() {
+  console.log("\n══ nlohmann/json Setup ════════════════════════════════");
+  console.log(`  Tag: ${nlohmannTag}`);
+
+  const nlohmannDir = join(VENDOR_DIR, "nlohmann");
+  const url = `https://github.com/nlohmann/json/releases/download/${nlohmannTag}/json.hpp`;
+  const headerPath = join(nlohmannDir, "json.hpp");
+
+  mkdirSync(nlohmannDir, { recursive: true });
+  await downloadFile(url, headerPath);
+  writeFileSync(join(nlohmannDir, ".nlohmann-version"), nlohmannTag + "\n");
+  console.log(`  ✓ nlohmann/json ${nlohmannTag} ready at ${nlohmannDir}`);
+}
+
 // ── Shared junction ─────────────────────────────────────────────────────────
 
 function setupSharedJunction() {
@@ -471,32 +494,42 @@ console.log("═".repeat(50));
 
 mkdirSync(VENDOR_DIR, { recursive: true });
 
-if (!cefOnly && !spoutOnly) {
+if (!cefOnly && !spoutOnly && !nlohmannOnly) {
   await setupCef();
   await setupSpout();
+  await setupNlohmann();
   setupSharedJunction();
 } else if (cefOnly) {
   await setupCef();
   setupSharedJunction();
 } else if (spoutOnly) {
   await setupSpout();
+} else if (nlohmannOnly) {
+  await setupNlohmann();
 }
 
 console.log("\n══ Summary ════════════════════════════════════════════");
 
 const cefVersionFile = join(VENDOR_DIR, "cef", ".cef-version");
 const spoutVersionFile = join(VENDOR_DIR, "spout", ".spout-version");
+const nlohmannVersionFile = join(VENDOR_DIR, "nlohmann", ".nlohmann-version");
 
 if (existsSync(cefVersionFile)) {
-  console.log(`  CEF:   ${readFileSync(cefVersionFile, "utf-8").trim()}`);
+  console.log(`  CEF:      ${readFileSync(cefVersionFile, "utf-8").trim()}`);
 } else {
-  console.log("  CEF:   not installed");
+  console.log("  CEF:      not installed");
 }
 
 if (existsSync(spoutVersionFile)) {
-  console.log(`  Spout: ${readFileSync(spoutVersionFile, "utf-8").trim()}`);
+  console.log(`  Spout:    ${readFileSync(spoutVersionFile, "utf-8").trim()}`);
 } else {
-  console.log("  Spout: not installed");
+  console.log("  Spout:    not installed");
+}
+
+if (existsSync(nlohmannVersionFile)) {
+  console.log(`  nlohmann: ${readFileSync(nlohmannVersionFile, "utf-8").trim()}`);
+} else {
+  console.log("  nlohmann: not installed");
 }
 
 console.log("\nNext steps:");

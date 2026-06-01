@@ -47,6 +47,7 @@ jobs:
           path: |
             native/vendor/cef
             native/vendor/spout
+            native/vendor/nlohmann
             _vendor_tmp
           key: vendors-cef-${{ hashFiles('scripts/setup-vendors.ts') }}
           restore-keys: vendors-cef-
