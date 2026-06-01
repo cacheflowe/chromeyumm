@@ -242,7 +242,8 @@ async function buildScreenDdp() {
   mkdirSync(join(NATIVE_DIR, "build"), { recursive: true });
 
   const screenDdpResFile = join(NATIVE_DIR, "build", "screen-ddp.res");
-  const screenDdpExe    = join(NATIVE_DIR, "build", "screen-ddp.exe");
+  mkdirSync(DIST_DIR, { recursive: true });
+  const screenDdpExe = join(DIST_DIR, "screen-ddp.exe");
 
   // Generate the RC file and compile the resource.
   const icoPath = join(NATIVE_DIR, "app.ico").replace(/\\/g, "/");
@@ -261,7 +262,14 @@ async function buildScreenDdp() {
       ` /link /SUBSYSTEM:CONSOLE d3d11.lib dxgi.lib ws2_32.lib winmm.lib d3dcompiler.lib gdi32.lib kernel32.lib user32.lib`,
   );
 
-  copyFileSync(screenDdpExe, join(DIST_DIR, "screen-ddp.exe"));
+  // Diagnostic: report where the exe landed if not at the expected path
+  if (!existsSync(screenDdpExe)) {
+    const altLocations = [join(ROOT, "screen-ddp.exe"), join(ROOT, "screen_ddp_main.exe"), join(NATIVE_DIR, "build", "screen-ddp.exe")];
+    for (const loc of altLocations) {
+      if (existsSync(loc)) console.log(`  [diag] exe found at alternate path: ${loc}`);
+    }
+    throw new Error(`screen-ddp.exe not found at expected path: ${screenDdpExe}`);
+  }
   console.log(`✓ screen-ddp: ${screenDdpExe}`);
 }
 
