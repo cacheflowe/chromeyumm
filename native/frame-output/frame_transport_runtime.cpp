@@ -83,6 +83,7 @@ public:
         ddp.flipH = config.flipH;
         ddp.flipV = config.flipV;
         ddp.rotate = config.rotate;
+        ddp.targetFps = config.targetFps;
 
         // Start before registering so a failed Start() leaves the manager clean.
         auto output = std::make_unique<DdpOutput>(ddp);

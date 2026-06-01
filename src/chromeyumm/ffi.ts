@@ -139,6 +139,7 @@ export const native = (() => {
           FFIType.bool, // flipH
           FFIType.bool, // flipV
           FFIType.i32, // rotate (0, 90, 180, 270)
+          FFIType.i32, // targetFps (0 = unlimited)
           FFIType.bool, // clearExisting
         ],
         returns: FFIType.bool,

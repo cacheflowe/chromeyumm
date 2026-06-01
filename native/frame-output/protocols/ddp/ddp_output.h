@@ -23,6 +23,7 @@ struct DdpOutputConfig {
     bool flipH = false;       // mirror output horizontally
     bool flipV = false;       // mirror output vertically
     int rotate = 0;           // clockwise rotation in degrees: 0, 90, 180, 270
+    int targetFps = 0;        // max send rate in fps; 0 = unlimited
     bool debugLog = false;    // print first-send packet details to stderr
 };
 
@@ -85,6 +86,7 @@ private:
     // Pre-allocated send buffer — avoids per-packet heap allocation in the hot path.
     std::vector<uint8_t> packetBuf_;
     std::atomic<bool> debugLogDone_{false};
+    int64_t minIntervalMs_ = 0; // precomputed from config_.targetFps in Start(); 0 = unlimited
 };
 
 } // namespace chromeyumm::frame_output

@@ -118,8 +118,11 @@ See `docs/references/vendor-management.md` for the full procedure and API compat
 ### Release
 
 Steps:
-- [Optional] Run workflow on GitHub 
-- Run command: `bun run release:publish -- --bump patch`
+- Run workflow on GitHub:
+- `bun run release:publish -- --bump patch`
+
+The following commands are also available for more control:
+
 
 | Command | Description |
 |---|---|

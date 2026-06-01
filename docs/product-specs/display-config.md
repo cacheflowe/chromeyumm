@@ -3,10 +3,25 @@
 ## User Story
 As an installation designer, I want to define my display layout, canvas size, content URL, and output transport settings in a single JSON file, so I can reconfigure installations without code changes.
 
+
 ## File Location
 - Project root: `display-config.json` (source of truth)
 - Copied to `dist/` on each build
 - Loader (`src/app/config.ts`) searches upward from `process.cwd()` to find it
+
+### How Chromeyumm Locates display-config.json
+
+Chromeyumm uses an upward search from the current working directory (cwd) to find `display-config.json`:
+
+- It starts at `process.cwd()` and looks for `display-config.json` in that directory.
+- If not found, it moves up one directory and repeats, continuing until it finds the file or reaches the root.
+
+**cwd depends on how Chromeyumm is launched:**
+
+- **From a shell/terminal:** `process.cwd()` is the directory you were in when you ran the command (e.g., running `dist/chromeyumm.exe` from `d:/workspace/chromeyumm`). Chromeyumm will look for `display-config.json` there, then in parent directories.
+- **By double-clicking in Explorer:** `process.cwd()` is typically the directory containing `chromeyumm.exe` (e.g., `dist/`). Chromeyumm will look for `display-config.json` in that folder, then parent folders.
+
+This means you can place `display-config.json` in the working directory or any parent directory, and Chromeyumm will find it regardless of launch method.
 
 ## Schema
 

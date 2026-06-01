@@ -34,6 +34,7 @@ struct DdpOutputStartConfig {
     bool flipH = false;
     bool flipV = false;
     int rotate = 0; // 0, 90, 180, 270
+    int targetFps = 0; // 0 = unlimited
 };
 
 struct SpoutOutputStartConfig {

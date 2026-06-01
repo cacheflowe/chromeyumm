@@ -24,6 +24,7 @@ CHROMEYUMM_EXPORT bool startDdpOutput(
     bool flipH,
     bool flipV,
     int rotate,
+    int targetFps,
     bool clearExisting)
 {
     if (!chromeyumm::frame_output::EnsureHostRuntime(webviewId)) return false;
@@ -41,6 +42,7 @@ CHROMEYUMM_EXPORT bool startDdpOutput(
     config.flipH = flipH;
     config.flipV = flipV;
     config.rotate = rotate;
+    config.targetFps = targetFps;
 
     const bool ok = chromeyumm::frame_output::StartDdpOutput(webviewId, config, clearExisting);
     if (ok) {
