@@ -55,9 +55,6 @@ bool DdpOutput::Start() {
     int sendBufferSize = 1024 * 1024;
     ::setsockopt(sock, SOL_SOCKET, SO_SNDBUF, reinterpret_cast<const char*>(&sendBufferSize), sizeof(sendBufferSize));
 
-    minIntervalMs_ = (config_.targetFps > 0 && config_.targetFps <= 1000)
-        ? 1000 / config_.targetFps
-        : 0;
     socket_ = static_cast<uintptr_t>(sock);
     running_ = true;
     stopKeepalive_ = false;
@@ -91,8 +88,6 @@ bool DdpOutput::IsRunning() const {
 void DdpOutput::OnFrame(const FrameContext&, const BgraFrameView& frame) {
     if (!running_) return;
     framesReceived_.fetch_add(1, std::memory_order_relaxed);
-
-    if (minIntervalMs_ > 0 && NowMs() - lastSendTimeMs_.load(std::memory_order_relaxed) < minIntervalMs_) return;
 
     int payloadPixelWidth = 0;
     if (!BuildRgbPayload(frame, rgbPayload_, payloadPixelWidth)) return;

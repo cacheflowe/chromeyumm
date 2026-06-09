@@ -394,7 +394,6 @@ if (configuredDdpOutputs.length > 0) {
       flipH,
       flipV,
       rotate,
-      targetFps: ddp.targetFps ?? 0,
       clearExisting: idx === 0,
     });
 

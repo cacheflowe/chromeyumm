@@ -141,7 +141,6 @@ export class BrowserWindow {
     flipH?: boolean;
     flipV?: boolean;
     rotate?: 0 | 90 | 180 | 270;
-    targetFps?: number;
     clearExisting?: boolean;
   }): boolean {
     return !!native.symbols.startDdpOutput(
@@ -158,7 +157,6 @@ export class BrowserWindow {
       options.flipH ?? false,
       options.flipV ?? false,
       options.rotate ?? 0,
-      options.targetFps ?? 0,
       options.clearExisting ?? true,
     );
   }

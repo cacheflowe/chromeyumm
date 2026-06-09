@@ -37,7 +37,6 @@ export interface DdpOutputConfig {
   flipH?: boolean;
   flipV?: boolean;
   rotate?: 0 | 90 | 180 | 270;
-  targetFps?: number;
   label?: string;
   enabled?: boolean;
 }
