@@ -6,8 +6,9 @@ src/views/*/node_modules/
 dist/
 build/
 release/
-app.log 
+app.log
 build_out.txt
+*.obj
 
 # Vendor binaries (large — run `bun scripts/setup-vendors.ts` to install)
 native/vendor/
