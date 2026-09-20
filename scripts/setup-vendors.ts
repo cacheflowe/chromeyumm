@@ -36,10 +36,10 @@ const VENDOR_DIR = join(NATIVE_DIR, "vendor");
 
 // CEF: find latest at https://cef-builds.spotifycdn.com/index.html
 // Format: "VERSION+HASH+chromium-CHROMIUM_VERSION"
-const DEFAULT_CEF_VERSION = "147.0.9+g2812b73+chromium-147.0.7727.49";
+const DEFAULT_CEF_VERSION = "152.0.8+g1ce985c+chromium-152.0.7977.134";
 
 // Spout2: find releases at https://github.com/leadedge/Spout2/releases
-const DEFAULT_SPOUT_TAG = "2.007.014";
+const DEFAULT_SPOUT_TAG = "2.007.017";
 
 // nlohmann/json: find releases at https://github.com/nlohmann/json/releases
 const DEFAULT_NLOHMANN_TAG = "v3.11.3";

@@ -508,6 +508,7 @@ static bool writeBgraToPng(const std::wstring& filePath,
     IWICBitmapEncoder* encoder = nullptr;
     IWICBitmapFrameEncode* frame = nullptr;
     IPropertyBag2* props = nullptr;
+    WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
 
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory,
                                   nullptr,
@@ -536,7 +537,6 @@ static bool writeBgraToPng(const std::wstring& filePath,
     hr = frame->SetSize(static_cast<UINT>(width), static_cast<UINT>(height));
     if (FAILED(hr)) goto cleanup;
 
-    WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
     hr = frame->SetPixelFormat(&format);
     if (FAILED(hr) || format != GUID_WICPixelFormat32bppBGRA) goto cleanup;
 
