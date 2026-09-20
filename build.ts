@@ -104,15 +104,10 @@ async function buildNative() {
 
   const cefInclude = join(NATIVE_DIR, "vendor", "cef");
   const cefLib = join(NATIVE_DIR, "vendor", "cef", "Release", "libcef.lib");
-  const cefWrapper = join(
-    NATIVE_DIR,
-    "vendor",
-    "cef",
-    "build",
-    "libcef_dll_wrapper",
-    "Release",
-    "libcef_dll_wrapper.lib",
-  );
+  // No "Release" subfolder here — setup-vendors.ts builds this via the NMake
+  // Makefiles generator (single-config, baked in via CMAKE_BUILD_TYPE), not
+  // a multi-config Visual-Studio-project generator.
+  const cefWrapper = join(NATIVE_DIR, "vendor", "cef", "build", "libcef_dll_wrapper", "libcef_dll_wrapper.lib");
 
   // Spout: compiled from source (no prebuilt static lib).
   // The prebuilt SpoutDX_static.lib was compiled with SPOUT_BUILD_DLL, which baked

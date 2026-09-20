@@ -307,19 +307,30 @@ async function setupCef() {
   const buildDir = join(cefDir, "build");
   mkdirSync(buildDir, { recursive: true });
 
-  const cmakeGen = await $`cmake -G "Visual Studio 17 2022" -A x64 -S "${cefDir}" -B "${buildDir}"`.quiet();
+  // NMake Makefiles instead of a named "Visual Studio NN YYYY" IDE-project
+  // generator: the latter requires CMake to recognize that exact generator
+  // string for whatever VS version happens to be installed, which breaks
+  // the moment a newer VS release ships before CMake adds support for its
+  // name (hit exactly this: a runner with a newer VS than "17 2022" made
+  // CMake report "could not find any instance of Visual Studio", even
+  // though findMsvc() above had just located one fine via vswhere). NMake
+  // Makefiles only needs cl.exe/nmake.exe on PATH, which runWithMsvc's
+  // vcvarsall.bat activation already guarantees regardless of VS version.
+  const cmakeGen = await runWithMsvc(
+    `cmake -G "NMake Makefiles" -DCMAKE_BUILD_TYPE=Release -S "${cefDir}" -B "${buildDir}"`,
+  );
   if (cmakeGen.exitCode !== 0) {
     console.error(cmakeGen.stderr.toString());
-    throw new Error("CMake generation failed. Ensure CMake and VS2022 are installed.");
+    throw new Error("CMake generation failed. Ensure CMake and a VC++ toolchain are installed.");
   }
 
-  const cmakeBuild = await $`cmake --build "${buildDir}" --config Release --target libcef_dll_wrapper`.quiet();
+  const cmakeBuild = await runWithMsvc(`cmake --build "${buildDir}" --target libcef_dll_wrapper`);
   if (cmakeBuild.exitCode !== 0) {
     console.error(cmakeBuild.stderr.toString());
     throw new Error("CMake build failed for libcef_dll_wrapper");
   }
 
-  const wrapperLib = join(buildDir, "libcef_dll_wrapper", "Release", "libcef_dll_wrapper.lib");
+  const wrapperLib = join(buildDir, "libcef_dll_wrapper", "libcef_dll_wrapper.lib");
   if (!existsSync(wrapperLib)) throw new Error(`Expected ${wrapperLib} not found after build`);
 
   console.log(`  ✓ libcef_dll_wrapper.lib built`);
