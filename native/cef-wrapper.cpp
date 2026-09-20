@@ -5278,7 +5278,6 @@ CHROMEYUMM_EXPORT bool initCEF() {
     CefString(&settings.resources_dir_path) = std::string(exePath);
     CefString(&settings.locales_dir_path) = std::string(exePath) + "\\locales";
     CefString(&settings.cache_path) = userDataDir;
-    
     // Add language settings like macOS
     CefString(&settings.accept_language_list) = "en-US,en";
     
