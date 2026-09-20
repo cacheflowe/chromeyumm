@@ -85,6 +85,7 @@ dist/chromeyumm.exe            # run (configure display-config.json first)
 | `bun run feature-check` | Feature detection page — WebGL, codecs, hardware APIs, CEF version |
 | `bun run demo-r3f` | Start R3F Vite dev server |
 | `bun run demo-p5` | Start P5 Vite dev server |
+| `bun run screen-capture` | Run `dist/screen-ddp.exe` in screen-capture mode, sending desktop pixels to DDP controllers per `screen-capture-config.json`, with the captured region outlined onscreen |
 
 ### Test & Diagnostics
 
