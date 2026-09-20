@@ -110,7 +110,7 @@ new p5((p: p5) => {
     // p.background(0, 255, 0);
 
     // copy canvas to 32px over, at half size, to simulate a second display with different source region
-    p.image(p.get(0, 0, canvasW, canvasH), 32, 0, canvasW / 2, canvasH / 2);
+    p.copy(0, 0, canvasW, canvasH, 32, 0, canvasW / 2, canvasH / 2);
   };
 
   p.keyPressed = () => {

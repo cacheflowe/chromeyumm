@@ -90,7 +90,7 @@ new p5((p: p5) => {
       p.rect(pt.x, pt.y, 2, 2);
     }
 
-    p.image(p.get(0, 0, canvasW, canvasH), 32, 0, canvasW / 2, canvasH / 2);
+    p.copy(0, 0, canvasW, canvasH, 32, 0, canvasW / 2, canvasH / 2);
   };
 
   p.keyPressed = () => {
