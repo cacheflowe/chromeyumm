@@ -247,6 +247,12 @@ If `display-config.json` is absent, the app auto-detects connected displays and 
 | **F12** | Toggle browser DevTools (undocked window) |
 | **Escape** | Quit cleanly |
 
+**Interactive vs. output mode** — these aren't the same window resized, they're two different windows being swapped:
+- **Interactive mode** shows `master`, the full browser window rendered at `virtualCanvas` size — the whole page, e.g. your ticker's sketch plus its controls UI below it.
+- **Output mode** shows the `displayWindows` (NDWs) instead — one per `windows[]` entry in `display-config.json`, each sized to just its `window` rect and fed via D3D blit from the matching `source` crop of the virtual canvas.
+
+So toggling Ctrl+M doesn't resize anything — it hides one window and shows the other. If your page has UI below the sketch (like the ticker's controls), that's why it only appears in interactive mode: the display windows never include that region at all, only whatever `source` rect you configured.
+
 ---
 
 ## Glossary
