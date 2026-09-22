@@ -10,6 +10,12 @@
 Once Bun adds support for custom subprocess names, add `chromeyumm Helper (GPU).exe` and friends to `helperNames` in `src/app/index.ts` for the GPU-preference registry writes. Currently only `chromeyumm.exe` and `chromeyumm Helper.exe` are registered.
 
 ## Backlog
+- DDP-only Linux/Raspberry Pi build: a stripped-down port for headless installs (a small web app driving one LED panel over DDP — no Spout, no multi-window output, no alwaysOnTop/window management). Scoped but not started:
+  - `native/frame-output/protocols/ddp/` is already platform-neutral (consumes raw RGB bytes, not a GPU texture) — carries over largely as-is; Winsock → POSIX sockets is the only real change.
+  - CEF's CPU-only OSR path (`OnPaint`, raw BGRA buffer) — already partially used elsewhere in `cef-wrapper.cpp` — replaces the current D3D11/ANGLE shared-texture pipeline, so no GPU blitting code needs porting.
+  - Needs: a new, much simpler Linux `cef-wrapper` (CPU-OSR only, no Spout, no NativeDisplayWindow/D3D swap-chain machinery), a Linux/ARM64 CEF vendor-fetch script (upstream CEF CDN publishes `linuxarm64` builds), and a trimmed `src/app/index.ts` (only ~25-35% applies — config loading, DDP setup, content URL; window/hotkey/Spout code drops out). Bun already supports Linux ARM64.
+  - Rough sizing: a few weeks of focused native work, not a near-rewrite.
+  - Open question: whether a Pi 4/5-class board has enough headroom to run full Chromium OSR + per-frame CPU readback at target framerate for a given canvas size — untested. Spike first (CEF OSR + CPU readback loop on real Pi hardware) before committing to the full port.
 - Multi-machine frame sync: L1 (UDP shared clock → `window.__sharedClock`) + optional L2 (frame-hold before `Present`) — see [product-specs/multi-machine-sync.md](../product-specs/multi-machine-sync.md)
 - DDP protocol polish: partial-update packetization (keepalive + stat counters done)
 - Crash/error logging to disk
